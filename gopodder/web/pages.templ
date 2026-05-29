@@ -1,0 +1,832 @@
+package web
+
+import (
+	"fmt"
+)
+
+
+templ SetupPage(errMsg string) {
+	@centeredLayout() {
+		<h1>Setup</h1>
+		<p>No accounts exist yet. Create the admin account to get started.</p>
+		@alertError(errMsg)
+		<form method="POST" action="/setup">
+			<div class="form-row">
+				<label for="username">Username</label>
+				<input type="text" id="username" name="username" required autofocus/>
+			</div>
+			<div class="form-row">
+				<label for="password">Password</label>
+				<input type="password" id="password" name="password" required/>
+			</div>
+			<div class="form-row">
+				<label for="password2">Confirm</label>
+				<input type="password" id="password2" name="password2" required/>
+			</div>
+			<div class="form-row">
+				<label></label>
+				<button type="submit" class="btn btn-primary">Create Admin Account</button>
+			</div>
+		</form>
+	}
+}
+
+templ LoginPage(errMsg string, showRegister bool, version string) {
+	@centeredLayout() {
+		<h1>Login</h1>
+		@alertError(errMsg)
+		<form method="POST" action="/login">
+			<div class="form-row">
+				<label for="username">Username</label>
+				<input type="text" id="username" name="username" required autofocus/>
+			</div>
+			<div class="form-row">
+				<label for="password">Password</label>
+				<input type="password" id="password" name="password" required/>
+			</div>
+			<div class="form-row">
+				<label></label>
+				<div class="btn-group">
+					<button type="submit" class="btn btn-primary">Login</button>
+					if showRegister {
+						<a href="/register" class="btn">Register</a>
+					}
+				</div>
+			</div>
+		</form>
+		<footer class="login-footer">
+			if version != "" {
+				<div class="login-footer-version">goPodder { version }</div>
+			}
+			<div class="login-footer-links">
+				<a href={ templ.SafeURL(RepoURL) } target="_blank">Source</a>
+				<a href={ templ.SafeURL(RepoURL + "/releases") } target="_blank">Releases</a>
+				<a href={ templ.SafeURL(RepoURL + "/issues") } target="_blank">Report an Issue</a>
+			</div>
+		</footer>
+	}
+}
+
+templ StatusPage(data StatusData) {
+	@layout(data.Account, data.IsAdmin, "status") {
+		<h1>Status</h1>
+		<div class="page-desc">
+			<p>goPodder is a lightweight, self-hostable podcast synchronization server compatible with the <a href="https://gpoddernet.readthedocs.io/en/latest/api/" target="_blank">gPodder API</a>. This project is not affiliated with or endorsed by <a href="https://www.gpodder.net/" target="_blank">gpodder.net</a>.</p>
+			<p>This software comes with absolutely no warranty. This is free and open source software licensed under the <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank">Apache License 2.0</a>. Source code available on <a href={ templ.SafeURL(RepoURL) } target="_blank">GitHub</a>. Read the <a href={ templ.SafeURL(RepoURL + "/releases") } target="_blank">changelog</a> to know what's new in this release. Copyright &copy; 2026 <a href="https://cbrgm.net" target="_blank">Christian Bargmann</a> (github@cbrgm.net).</p>
+		</div>
+		<h2>Build</h2>
+		<div class="table-wrap">
+			<table class="info-table">
+				<tr>
+					<th>Version</th>
+					<td>{ data.Version }</td>
+				</tr>
+				<tr>
+					<th>Revision</th>
+					<td>{ data.Revision }</td>
+				</tr>
+				<tr>
+					<th>Build Date</th>
+					<td>{ data.BuildDate }</td>
+				</tr>
+				<tr>
+					<th>Go Version</th>
+					<td>{ data.GoVersion }</td>
+				</tr>
+				<tr>
+					<th>Platform</th>
+					<td>{ data.Platform }</td>
+				</tr>
+			</table>
+		</div>
+		<h2>Runtime</h2>
+		<div class="table-wrap">
+			<table class="info-table">
+				<tr>
+					<th>Listen Address</th>
+					<td>{ data.ListenAddr }</td>
+				</tr>
+				<tr>
+					<th>Database</th>
+					<td>{ data.DBBackend }</td>
+				</tr>
+				<tr>
+					<th>Uptime</th>
+					<td>{ data.Uptime }</td>
+				</tr>
+				<tr>
+					<th>Memory (Alloc)</th>
+					<td>{ data.MemAlloc }</td>
+				</tr>
+				<tr>
+					<th>Goroutines</th>
+					<td>{ fmt.Sprint(data.Goroutines) }</td>
+				</tr>
+			</table>
+		</div>
+		<h2>Statistics</h2>
+		<div class="table-wrap">
+			<table class="info-table">
+				<tr>
+					<th>Accounts</th>
+					<td>{ fmt.Sprint(data.Stats.Accounts) }</td>
+				</tr>
+				<tr>
+					<th>goPodder Users</th>
+					<td>{ fmt.Sprint(data.Stats.Users) }</td>
+				</tr>
+				<tr>
+					<th>Devices</th>
+					<td>{ fmt.Sprint(data.Stats.Devices) }</td>
+				</tr>
+				<tr>
+					<th>Active Subscriptions</th>
+					<td>{ fmt.Sprint(data.Stats.Subscriptions) }</td>
+				</tr>
+				<tr>
+					<th>Episode Actions</th>
+					<td>{ fmt.Sprint(data.Stats.Episodes) }</td>
+				</tr>
+			</table>
+		</div>
+		<div class="page-desc" style="margin-top: 20px; border: none; padding: 0;">
+			<p>
+				<a href={ templ.SafeURL(RepoURL) } target="_blank">Source</a>
+				&middot; <a href={ templ.SafeURL(RepoURL + "/releases") } target="_blank">Releases</a>
+				&middot; <a href={ templ.SafeURL(RepoURL + "/issues") } target="_blank">Report an Issue</a>
+			</p>
+		</div>
+	}
+}
+
+templ AccountsPage(data AccountsPageData) {
+	@layout(data.Account, true, "accounts") {
+		<h1>Accounts</h1>
+		<p class="page-desc">Accounts are used to log in to this web interface. Each account can have one or more goPodder users linked to it for podcast synchronization.</p>
+		@alertError(data.Error)
+		@alertSuccess(data.Flash)
+		<div class="section">
+			<h2>Create Account</h2>
+			<form method="POST" action="/admin/accounts">
+				@csrfField()
+				<div class="form-row">
+					<label for="new-username">Username</label>
+					<input type="text" id="new-username" name="username" required/>
+				</div>
+				<div class="form-row">
+					<label for="new-password">Password</label>
+					<input type="password" id="new-password" name="password" required/>
+				</div>
+				<div class="form-row">
+					<label for="new-role">Role</label>
+					<select id="new-role" name="role">
+						<option value="standard">standard</option>
+						<option value="admin">admin</option>
+					</select>
+				</div>
+				<div class="form-row">
+					<label></label>
+					<button type="submit" class="btn btn-primary">Create Account</button>
+				</div>
+			</form>
+		</div>
+		<div class="table-wrap">
+			<table>
+				<tr>
+					<th>Account Name</th>
+					<th>Role</th>
+					<th>goPodder Users</th>
+					<th>Created</th>
+					<th>Last Login</th>
+					<th>Last Activity</th>
+					<th>Actions</th>
+				</tr>
+				for _, acct := range data.Accounts {
+					<tr>
+						<td>{ acct.Username }</td>
+						<td>{ acct.Role }</td>
+						<td>{ fmt.Sprint(acct.Users) }</td>
+						<td class="muted">{ acct.CreatedAt }</td>
+						<td class="muted">{ acct.LastLogin }</td>
+						<td class="muted">{ acct.LastActivity }</td>
+						<td>
+							<div class="btn-group">
+								<a href={ templ.SafeURL("/admin/accounts/" + acct.ID) } class="btn">Edit</a>
+								if acct.Username != data.Account {
+									<form method="POST" action={ templ.SafeURL("/admin/accounts/" + acct.ID + "/delete") } style="display:inline;" onsubmit="return confirm('Delete this account? This cannot be undone.');">
+										@csrfField()
+										<button type="submit" class="btn btn-danger">Delete</button>
+									</form>
+								}
+							</div>
+						</td>
+					</tr>
+				}
+			</table>
+		</div>
+	}
+}
+
+templ AccountEditPage(data AccountEditData) {
+	@layout(data.Account, true, "accounts") {
+		<h1>Accounts / { data.EditAccount.Username }</h1>
+		@alertError(data.Error)
+		@alertSuccess(data.Flash)
+		<div class="section">
+			<h2>Account Settings</h2>
+			<p class="setting-desc">Change the username or role for this account.</p>
+			<form method="POST" action={ templ.SafeURL("/admin/accounts/" + data.EditAccount.ID) }>
+				@csrfField()
+				<div class="form-row">
+					<label for="edit-name">Username</label>
+					<input type="text" id="edit-name" name="username" value={ data.EditAccount.Username } required/>
+				</div>
+				<div class="form-row">
+					<label for="edit-role">Role</label>
+					<select id="edit-role" name="role">
+						if data.EditAccount.Role == "admin" {
+							<option value="admin" selected>admin</option>
+							<option value="standard">standard</option>
+						} else {
+							<option value="standard" selected>standard</option>
+							<option value="admin">admin</option>
+						}
+					</select>
+				</div>
+				<div class="form-row">
+					<label></label>
+					<button type="submit" class="btn btn-primary">Save</button>
+				</div>
+			</form>
+		</div>
+		<div class="section">
+			<h2>Change Password</h2>
+			<p class="setting-desc">Set a new password for this account. This is used to log in to the web interface.</p>
+			<form method="POST" action={ templ.SafeURL("/admin/accounts/" + data.EditAccount.ID + "/password") }>
+				@csrfField()
+				<div class="form-row">
+					<label for="new-pw">New Password</label>
+					<input type="password" id="new-pw" name="password" required/>
+				</div>
+				<div class="form-row">
+					<label for="new-pw2">Confirm</label>
+					<input type="password" id="new-pw2" name="password2" required/>
+				</div>
+				<div class="form-row">
+					<label></label>
+					<button type="submit" class="btn btn-primary">Change Password</button>
+				</div>
+			</form>
+		</div>
+		<div class="section">
+			<h2>goPodder Users</h2>
+			if len(data.Users) == 0 {
+				<p>No goPodder users linked to this account.</p>
+			} else {
+				<div class="table-wrap">
+					<table>
+						<tr>
+							<th>Username</th>
+							<th>Devices</th>
+							<th>Subscriptions</th>
+							<th>Last Activity</th>
+							<th>Actions</th>
+						</tr>
+						for _, user := range data.Users {
+							<tr>
+								<td>{ user.Username }</td>
+								<td>{ fmt.Sprint(user.Devices) }</td>
+								<td>{ fmt.Sprint(user.Subscriptions) }</td>
+								<td class="muted">{ user.LastActivity }</td>
+								<td>
+									<div class="btn-group">
+										<a href={ templ.SafeURL("/admin/accounts/" + data.EditAccount.ID + "/users/" + user.Username) } class="btn">Details</a>
+										<form method="POST" action={ templ.SafeURL("/admin/accounts/" + data.EditAccount.ID + "/users/" + user.Username + "/delete") } style="display:inline;" onsubmit="return confirm('Delete this user? This cannot be undone.');">
+											@csrfField()
+											<button type="submit" class="btn btn-danger">Delete</button>
+										</form>
+									</div>
+								</td>
+							</tr>
+						}
+					</table>
+				</div>
+			}
+			<h3>Create goPodder User</h3>
+			<form method="POST" action={ templ.SafeURL("/admin/accounts/" + data.EditAccount.ID + "/users") }>
+				@csrfField()
+				<div class="form-row">
+					<label for="gpuser">Username</label>
+					<input type="text" id="gpuser" name="username" required/>
+				</div>
+				<div class="form-row">
+					<label for="gppass">Password</label>
+					<input type="password" id="gppass" name="password" required/>
+				</div>
+				<div class="form-row">
+					<label></label>
+					<button type="submit" class="btn btn-primary">Create User</button>
+				</div>
+			</form>
+		</div>
+		<div class="actions"><a href="/admin/accounts" class="btn">Back to Accounts</a></div>
+	}
+}
+
+templ UserDetailPage(data UserDetailData) {
+	@layout(data.Account, data.IsAdmin, data.ActiveTab) {
+		if data.ActiveTab == "accounts" {
+			<h1>Accounts / { data.AccountName } / { data.Username }</h1>
+		} else {
+			<h1>Users / { data.Username }</h1>
+		}
+		@alertError(data.Error)
+		@alertSuccess(data.Flash)
+		<div class="section">
+			<h2>Devices</h2>
+			<p class="setting-desc">Devices are registered automatically by your podcast apps. All devices share the same subscriptions and stay in sync.</p>
+			if len(data.Devices) == 0 {
+				<p>No devices registered yet.</p>
+			} else {
+				<div class="table-wrap">
+					<table>
+						<tr>
+							<th>ID</th>
+							<th>Caption</th>
+							<th>Type</th>
+							<th>Last Synced</th>
+							<th>Actions</th>
+						</tr>
+						for _, dev := range data.Devices {
+							<tr>
+								<td class="mono">{ dev.ID }</td>
+								<td>{ dev.Caption }</td>
+								<td>{ dev.Type }</td>
+								<td class="muted">{ dev.LastActivity }</td>
+								<td>
+									<form method="POST" action={ templ.SafeURL(data.BasePath + "/devices/" + dev.ID + "/delete") } style="display:inline;" onsubmit="return confirm('Delete this device? This cannot be undone.');">
+										@csrfField()
+										<button type="submit" class="btn btn-danger">Delete</button>
+									</form>
+								</td>
+							</tr>
+						}
+					</table>
+				</div>
+			}
+		</div>
+		<div class="section">
+			<h2>Subscriptions</h2>
+			<p class="setting-desc">These are all podcast feeds synced across your devices. When you subscribe or unsubscribe in any app, the change is reflected here and synced to all other devices.</p>
+			if len(data.Subscriptions) == 0 {
+				<p>No subscriptions yet.</p>
+			} else {
+				<div class="table-wrap">
+					<table>
+						<tr>
+							<th>Feed URL</th>
+							<th>Actions</th>
+						</tr>
+						for _, sub := range data.Subscriptions {
+							<tr>
+								<td class="mono">{ sub }</td>
+								<td>
+									<form method="POST" action={ templ.SafeURL(data.BasePath + "/subscriptions/delete-one") } style="display:inline;" onsubmit="return confirm('Remove this subscription?');">
+										@csrfField()
+										<input type="hidden" name="url" value={ sub }/>
+										<button type="submit" class="btn btn-danger">Remove</button>
+									</form>
+								</td>
+							</tr>
+						}
+					</table>
+				</div>
+				<div class="actions">
+					<div class="btn-group">
+						<a href={ templ.SafeURL("/opml?user=" + data.Username) } class="btn" title="Export all subscriptions of this user as OPML">Export OPML</a>
+						<form method="POST" action={ templ.SafeURL(data.BasePath + "/subscriptions/delete") } style="display:inline;" onsubmit="return confirm('Remove all subscriptions? This cannot be undone.');">
+							@csrfField()
+							<button type="submit" class="btn btn-danger">Remove All</button>
+						</form>
+					</div>
+				</div>
+			}
+			<h3>Add Subscription</h3>
+			<p class="setting-desc">Add a single podcast feed URL. It will be synced to all connected devices.</p>
+			<form method="POST" action={ templ.SafeURL(data.BasePath + "/subscriptions/add") }>
+				@csrfField()
+				<div class="form-row">
+					<label for="add-url">Feed URL</label>
+					<input type="text" id="add-url" name="url" placeholder="https://example.com/feed.xml" required/>
+				</div>
+				<div class="form-row">
+					<label></label>
+					<button type="submit" class="btn btn-primary">Subscribe</button>
+				</div>
+			</form>
+			<h3>Import OPML</h3>
+			<p class="setting-desc">Import subscriptions from an OPML file. All feeds will be synced to all connected devices.</p>
+			<form method="POST" action={ templ.SafeURL(data.BasePath + "/subscriptions/import") } enctype="multipart/form-data">
+				@csrfField()
+				<div class="form-row">
+					<label for="opml-file">OPML File</label>
+					<input type="file" id="opml-file" name="file" accept=".opml,.xml" required/>
+				</div>
+				<div class="form-row">
+					<label></label>
+					<button type="submit" class="btn btn-primary">Import</button>
+				</div>
+			</form>
+		</div>
+		if data.SharingAllowed {
+		<div class="section">
+			<h2>Share Subscriptions</h2>
+			<p class="setting-desc">Share your subscription list publicly. The OPML link can be imported into any podcast app. The RSS link is a feed of your subscription URLs that updates when you add or remove podcasts (useful for tracking changes in an RSS reader, not for playing audio).</p>
+			if data.ShareToken != "" {
+				<div class="form-row">
+					<label>OPML</label>
+					<div class="share-url-group">
+						<input type="text" value={ data.ShareOPMLURL } readonly onclick="this.select()" class="share-url-input"/>
+						<button type="button" class="btn" onclick="navigator.clipboard.writeText(this.previousElementSibling.value);this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500)" title="Copy to clipboard">Copy</button>
+						<a href={ templ.SafeURL(data.ShareOPMLURL) } class="btn" target="_blank" title="Open in new tab">Open</a>
+					</div>
+				</div>
+				<div class="form-row">
+					<label>RSS</label>
+					<div class="share-url-group">
+						<input type="text" value={ data.ShareRSSURL } readonly onclick="this.select()" class="share-url-input"/>
+						<button type="button" class="btn" onclick="navigator.clipboard.writeText(this.previousElementSibling.value);this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500)" title="Copy to clipboard">Copy</button>
+						<a href={ templ.SafeURL(data.ShareRSSURL) } class="btn" target="_blank" title="Open in new tab">Open</a>
+					</div>
+				</div>
+				<div class="form-row">
+					<label></label>
+					<div class="btn-group">
+						<form method="POST" action={ templ.SafeURL(data.BasePath + "/sharing/enable") } style="display:inline;" onsubmit="return confirm('Regenerate share links? Existing links will stop working.');">
+							@csrfField()
+							<button type="submit" class="btn btn-primary">Regenerate</button>
+						</form>
+						<form method="POST" action={ templ.SafeURL(data.BasePath + "/sharing/disable") } style="display:inline;" onsubmit="return confirm('Disable sharing? Existing links will stop working.');">
+							@csrfField()
+							<button type="submit" class="btn btn-danger">Disable</button>
+						</form>
+					</div>
+				</div>
+			} else {
+				<form method="POST" action={ templ.SafeURL(data.BasePath + "/sharing/enable") }>
+					@csrfField()
+					<div class="form-row">
+						<label></label>
+						<button type="submit" class="btn btn-primary">Enable Sharing</button>
+					</div>
+				</form>
+			}
+		</div>
+		}
+		<div class="section">
+			<h2>Change Password</h2>
+			<p class="setting-desc">Change the password for this goPodder user. This is the password used by podcast apps to authenticate with the sync server.</p>
+			<form method="POST" action={ templ.SafeURL(data.BasePath + "/password") }>
+				@csrfField()
+				<div class="form-row">
+					<label for="new-pw">New Password</label>
+					<input type="password" id="new-pw" name="password" required/>
+				</div>
+				<div class="form-row">
+					<label for="new-pw2">Confirm</label>
+					<input type="password" id="new-pw2" name="password2" required/>
+				</div>
+				<div class="form-row">
+					<label></label>
+					<button type="submit" class="btn btn-primary">Change Password</button>
+				</div>
+			</form>
+		</div>
+		<div class="actions"><a href={ templ.SafeURL(data.BackURL) } class="btn">{ data.BackLabel }</a></div>
+	}
+}
+
+templ UserManagementPage(data UserManagementData) {
+	@layout(data.Account, data.IsAdmin, "users") {
+		<h1>Users</h1>
+		<p class="page-desc">goPodder users are the identities your podcast apps use to sync subscriptions and episode progress. Each user can be connected to multiple devices.</p>
+		@alertError(data.Error)
+		@alertSuccess(data.Flash)
+		if data.CanCreateUsers {
+			<div class="section">
+				<h2>Create goPodder User</h2>
+				<form method="POST" action="/users">
+					@csrfField()
+					<div class="form-row">
+						<label for="gpuser">Username</label>
+						<input type="text" id="gpuser" name="username" required/>
+					</div>
+					<div class="form-row">
+						<label for="gppass">Password</label>
+						<input type="password" id="gppass" name="password" required/>
+					</div>
+					<div class="form-row">
+						<label></label>
+						<button type="submit" class="btn btn-primary">Create User</button>
+					</div>
+				</form>
+			</div>
+		}
+		if len(data.Users) == 0 {
+			<p>No goPodder users linked to your account.</p>
+			if !data.CanCreateUsers {
+				<p class="setting-desc">Contact an administrator to have goPodder users created for your account.</p>
+			}
+		} else {
+			<div class="table-wrap">
+				<table>
+					<tr>
+						<th>Username</th>
+						<th>Devices</th>
+						<th>Subscriptions</th>
+						<th>Last Activity</th>
+						<th>Actions</th>
+					</tr>
+					for _, user := range data.Users {
+						<tr>
+							<td>{ user.Username }</td>
+							<td>{ fmt.Sprint(user.Devices) }</td>
+							<td>{ fmt.Sprint(user.Subscriptions) }</td>
+							<td class="muted">{ user.LastActivity }</td>
+							<td>
+								<div class="btn-group">
+									<a href={ templ.SafeURL("/users/" + user.Username) } class="btn">Details</a>
+									if user.Subscriptions > 0 {
+										<a href={ templ.SafeURL("/opml?user=" + user.Username) } class="btn" title="Export all subscriptions of this user as OPML">Export OPML</a>
+									}
+									<form method="POST" action={ templ.SafeURL("/users/" + user.Username + "/delete") } style="display:inline;" onsubmit="return confirm('Delete this user? This cannot be undone.');">
+										@csrfField()
+										<button type="submit" class="btn btn-danger">Delete</button>
+									</form>
+								</div>
+							</td>
+						</tr>
+					}
+				</table>
+			</div>
+		}
+	}
+}
+
+templ SettingsPage(data SettingsPageData) {
+	@layout(data.Account, true, "settings") {
+		<h1>Settings</h1>
+		<p class="page-desc">Configure how goPodder behaves. Changes take effect immediately for all users.</p>
+		@alertError(data.Error)
+		@alertSuccess(data.Flash)
+		<form method="POST" action="/admin/settings">
+			@csrfField()
+			<div class="section">
+				<h2>Registration</h2>
+				<div class="setting-item">
+					<label for="self-registration">
+						<input
+							type="checkbox"
+							id="self-registration"
+							name="self_registration"
+							value="true"
+							if data.SelfRegistration {
+								checked
+							}
+						/>
+						Allow self-registration
+					</label>
+				</div>
+				<p class="setting-desc">When enabled, a "Register" button is shown on the login page. Anyone can create their own account without admin intervention. Self-registered accounts are assigned the "standard" role.</p>
+			</div>
+			<div class="section">
+				<h2>User Management</h2>
+				<div class="setting-item">
+					<label for="allow-user-creation">
+						<input
+							type="checkbox"
+							id="allow-user-creation"
+							name="allow_user_creation"
+							value="true"
+							if data.AllowUserCreation {
+								checked
+							}
+						/>
+						Allow users to create goPodder users
+					</label>
+				</div>
+				<p class="setting-desc">When enabled, standard accounts can create and manage their own goPodder users from the Users tab. When disabled, only admins can create goPodder users for accounts.</p>
+				<div class="setting-item">
+					<label for="max-users">Max goPodder users per account</label>
+					<input type="number" id="max-users" name="max_users_per_account" value={ fmt.Sprint(data.MaxUsersPerAccount) } min="0"/>
+				</div>
+				<p class="setting-desc">Maximum number of goPodder users each account can create. Set to 0 for unlimited.</p>
+				<div class="setting-item">
+					<label for="allow-sharing">
+						<input
+							type="checkbox"
+							id="allow-sharing"
+							name="allow_sharing"
+							value="true"
+							if data.AllowSharing {
+								checked
+							}
+						/>
+						Allow subscription sharing
+					</label>
+				</div>
+				<p class="setting-desc">When enabled, users can generate public links to share their subscriptions as OPML or RSS feeds. When disabled, sharing is not available and existing share links stop working.</p>
+				<div class="setting-item">
+					<label for="allow-api-keys">
+						<input
+							type="checkbox"
+							id="allow-api-keys"
+							name="allow_api_keys"
+							value="true"
+							if data.AllowAPIKeys {
+								checked
+							}
+						/>
+						Allow API key creation
+					</label>
+				</div>
+				<p class="setting-desc">When enabled, standard accounts can create API keys for programmatic access. Admin accounts can always create API keys regardless of this setting.</p>
+				<div class="setting-item">
+					<label for="max-api-keys">Max API keys per account</label>
+					<input type="number" id="max-api-keys" name="max_api_keys_per_account" value={ fmt.Sprint(data.MaxAPIKeys) } min="1"/>
+				</div>
+				<p class="setting-desc">Maximum number of API keys each standard account can create. Admin accounts are not affected by this limit. Default is 25.</p>
+			</div>
+			<div class="section">
+				<h2>Security</h2>
+				<div class="setting-item">
+					<label for="min-pw-length">Minimum password length</label>
+					<input type="number" id="min-pw-length" name="min_password_length" value={ fmt.Sprint(data.MinPasswordLength) } min="0"/>
+				</div>
+				<p class="setting-desc">Minimum number of characters required for all passwords (accounts and goPodder users). Default is 8. Setting this below 8 weakens security and is not recommended.</p>
+				<div class="setting-item">
+					<label for="session-max-age">Session max age (hours)</label>
+					<input type="number" id="session-max-age" name="session_max_age_hours" value={ fmt.Sprint(data.SessionMaxAge) } min="1"/>
+				</div>
+				<p class="setting-desc">Sessions expire after this many hours of inactivity. Default is 168 hours (7 days).</p>
+			</div>
+			<div class="section">
+				<h2>Data retention</h2>
+				<div class="setting-item">
+					<label for="episode-retention">Episode retention (days)</label>
+					<input type="number" id="episode-retention" name="episode_retention_days" value={ fmt.Sprint(data.EpisodeRetention) } min="0" max="3650"/>
+				</div>
+				<p class="setting-desc">Episode actions older than this are automatically deleted. Minimum 7 days, maximum 10 years. Default is 90 days. Set to 0 to disable cleanup (not recommended for long-term use).</p>
+				<div class="setting-item">
+					<label for="inactive-account-days">Delete inactive accounts after (days)</label>
+					<input type="number" id="inactive-account-days" name="inactive_account_days" value={ fmt.Sprint(data.InactiveAccountDays) } min="0" max="3650"/>
+				</div>
+				<p class="setting-desc">Accounts with no sync activity for this long are automatically deleted along with all their data. Only non-admin accounts are affected. Set to 0 to disable (default). Minimum 30 days when enabled.</p>
+			</div>
+			<div class="actions">
+				<button type="submit" class="btn btn-primary">Save Settings</button>
+			</div>
+		</form>
+	}
+}
+
+templ AccountSelfPage(data AccountSelfData) {
+	@layout(data.Account, data.IsAdmin, "") {
+		<h1>My Account</h1>
+		<p class="page-desc">Manage your account settings. You can change your password, manage API keys, or delete your account.</p>
+		@alertError(data.Error)
+		if data.NewKey != "" {
+			<div class="alert-success" style="word-break: break-all;">
+				<p style="margin: 0 0 10px 0;"><strong>API key created successfully</strong></p>
+				<p style="margin: 0 0 8px 0; font-family: monospace; font-size: 14px; padding: 8px 12px; background: rgba(0,0,0,0.04); border-radius: 3px;">{ data.NewKey }</p>
+				<p style="margin: 0; font-size: 12px; color: #555;">This is the only time the key will be shown. Store it somewhere safe.</p>
+			</div>
+		} else {
+			@alertSuccess(data.Flash)
+		}
+		<div class="section">
+			<h2>Change Password</h2>
+			<p class="setting-desc">Change the password you use to log in to this web interface.</p>
+			<form method="POST" action="/account/password">
+				@csrfField()
+				<div class="form-row">
+					<label for="current-pw">Current Password</label>
+					<input type="password" id="current-pw" name="current_password" required/>
+				</div>
+				<div class="form-row">
+					<label for="new-pw">New Password</label>
+					<input type="password" id="new-pw" name="password" required/>
+				</div>
+				<div class="form-row">
+					<label for="new-pw2">Confirm</label>
+					<input type="password" id="new-pw2" name="password2" required/>
+				</div>
+				<div class="form-row">
+					<label></label>
+					<button type="submit" class="btn btn-primary">Change Password</button>
+				</div>
+			</form>
+		</div>
+		if data.APIKeysAllowed {
+			<div class="section">
+				<h2>API Keys</h2>
+				<p class="setting-desc">API keys allow programmatic access to manage goPodder users and subscriptions. Authenticate with a Bearer token in the Authorization header.</p>
+				<p class="setting-desc"><a href={ templ.SafeURL(RepoURL + "/blob/main/APIDOCS.md") } target="_blank">View API documentation</a></p>
+				if len(data.APIKeys) > 0 {
+					<div class="table-wrap">
+						<table>
+							<tr>
+								<th>Name</th>
+								<th>Prefix</th>
+								<th>Role</th>
+								<th>Created</th>
+								<th>Last Used</th>
+								<th>Actions</th>
+							</tr>
+							for _, key := range data.APIKeys {
+								<tr>
+									<td>{ key.Name }</td>
+									<td class="mono">{ key.Prefix }...</td>
+									<td>{ key.Role }</td>
+									<td class="muted">{ key.CreatedAt }</td>
+									<td class="muted">{ key.LastUsed }</td>
+									<td>
+										<form method="POST" action={ templ.SafeURL("/account/keys/" + key.ID + "/delete") } style="display:inline;" onsubmit="return confirm('Delete this API key? Applications using it will lose access.');">
+											@csrfField()
+											<button type="submit" class="btn btn-danger">Delete</button>
+										</form>
+									</td>
+								</tr>
+							}
+						</table>
+					</div>
+				} else {
+					<p>No API keys created yet.</p>
+				}
+				<h3>Create API Key</h3>
+				<form method="POST" action="/account/keys">
+					@csrfField()
+					<div class="form-row">
+						<label for="key-name">Name</label>
+						<input type="text" id="key-name" name="name" placeholder="My automation" required/>
+					</div>
+					if data.IsAdmin {
+						<div class="form-row">
+							<label for="key-role">Role</label>
+							<select id="key-role" name="role">
+								<option value="standard">standard</option>
+								<option value="admin">admin</option>
+							</select>
+						</div>
+					}
+					<div class="form-row">
+						<label></label>
+						<button type="submit" class="btn btn-primary">Create Key</button>
+					</div>
+				</form>
+			</div>
+		}
+		<div class="section">
+			<h2>Delete Account</h2>
+			<p class="setting-desc">Permanently delete your account and all associated goPodder users, devices, and subscriptions. This cannot be undone.</p>
+			<form method="POST" action="/account/delete" onsubmit="return confirm('Are you sure you want to delete your account? All data will be permanently lost.');">
+				@csrfField()
+				<div class="form-row">
+					<label></label>
+					<button type="submit" class="btn btn-danger">Delete My Account</button>
+				</div>
+			</form>
+		</div>
+	}
+}
+
+templ RegisterPage(data RegisterPageData) {
+	@centeredLayout() {
+		<h1>Register</h1>
+		<p>Create a new account to get started.</p>
+		@alertError(data.Error)
+		<form method="POST" action="/register">
+			<div class="form-row">
+				<label for="username">Username</label>
+				<input type="text" id="username" name="username" required autofocus/>
+			</div>
+			<div class="form-row">
+				<label for="password">Password</label>
+				<input type="password" id="password" name="password" required/>
+			</div>
+			<div class="form-row">
+				<label for="password2">Confirm</label>
+				<input type="password" id="password2" name="password2" required/>
+			</div>
+			<div class="form-row">
+				<label></label>
+				<button type="submit" class="btn btn-primary">Register</button>
+			</div>
+		</form>
+		<div class="actions">
+			<a href="/login" class="btn">Back to Login</a>
+		</div>
+	}
+}
+
+

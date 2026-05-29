@@ -1,0 +1,158 @@
+package web
+
+templ csrfField() {
+	<input type="hidden" name="csrf_token" value={ CSRFToken(ctx) }/>
+}
+
+templ baseHead() {
+	<meta charset="utf-8"/>
+	<meta name="viewport" content="width=device-width, initial-scale=1"/>
+	<title>goPodder</title>
+	<style>
+		body { font-family: Helvetica, Arial, sans-serif; font-size: 14px; margin: 0; padding: 0; color: #333; }
+		nav { background: #333; padding: 0 20px; display: flex; align-items: center; flex-wrap: wrap; }
+		nav .brand { font-size: 16px; font-weight: bold; color: #fff; margin-right: 30px; padding: 12px 0; }
+		nav a.tab { color: #ccc; text-decoration: none; padding: 12px 15px; display: inline-block; }
+		nav a.tab:hover { color: #fff; background: #444; }
+		nav a.tab.active { color: #fff; border-bottom: 3px solid #06c; }
+		nav .spacer { flex: 1; }
+		nav .user { color: #aaa; font-size: 13px; padding: 12px 0; text-decoration: none; }
+		nav .user:hover { color: #fff; }
+		nav .user .role { font-size: 11px; color: #888; margin-left: 4px; }
+		nav form { margin: 0; padding: 0; }
+		nav .logout-btn { background: none; border: none; color: #aaa; cursor: pointer; padding: 12px 10px; font-size: 13px; font-family: inherit; }
+		nav .logout-btn:hover { color: #fff; }
+		main { padding: 20px; max-width: 1000px; }
+		main.centered { max-width: 400px; margin: 60px auto; }
+		h1 { font-size: 20px; font-weight: normal; margin: 0 0 6px 0; }
+		.page-desc { margin: 0 0 20px 0; padding-bottom: 15px; border-bottom: 1px solid #eee; font-size: 13px; color: #666; line-height: 1.5; }
+		.page-desc p { margin: 0 0 8px 0; }
+		.page-desc p:last-child { margin-bottom: 0; }
+		.page-desc a { color: #06c; text-decoration: none; }
+		.page-desc a:hover { text-decoration: underline; }
+		.login-footer { margin-top: 50px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; }
+		.login-footer-version { font-size: 12px; color: #999; margin-bottom: 8px; }
+		.login-footer-links { display: flex; justify-content: center; gap: 16px; flex-wrap: wrap; }
+		.login-footer-links a { font-size: 12px; color: #888; text-decoration: none; }
+		.login-footer-links a:hover { color: #06c; }
+		h2 { font-size: 16px; font-weight: bold; margin: 20px 0 10px 0; }
+		h3 { font-size: 14px; font-weight: bold; margin: 15px 0 8px 0; }
+		.table-wrap { overflow-x: auto; }
+		table { border-collapse: collapse; width: 100%; }
+		th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #eee; }
+		th { font-weight: bold; background: #f7f7f7; font-size: 12px; text-transform: uppercase; letter-spacing: 0.3px; color: #666; }
+		td.mono { font-family: monospace; font-size: 13px; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+		td.muted { color: #888; font-size: 12px; }
+		.btn { display: inline-block; padding: 5px 12px; font-size: 13px; font-family: inherit; border: 1px solid #ccc; background: #fff; color: #333; cursor: pointer; text-decoration: none; line-height: 1.4; vertical-align: middle; border-radius: 3px; }
+		.btn:hover { background: #f5f5f5; }
+		.btn:focus { outline: 2px solid #06c; outline-offset: 1px; }
+		.btn-danger { border-color: #c33; color: #c33; }
+		.btn-danger:hover { background: #fee; }
+		.btn-primary { border-color: #06c; color: #06c; }
+		.btn-primary:hover { background: #e8f4ff; }
+		.btn + .btn { margin-left: 4px; }
+		.btn-group { display: inline-flex; gap: 6px; align-items: center; }
+		.btn-group .btn + .btn { margin-left: 0; }
+		.share-url-group { display: inline-flex; gap: 6px; align-items: center; }
+		.share-url-group .share-url-input { width: 360px; font-family: monospace; font-size: 12px; }
+		.form-row { margin: 10px 0; }
+		.form-row label { display: inline-block; width: 140px; font-weight: bold; }
+		.form-row input[type="text"], .form-row input[type="password"], .form-row select { padding: 6px 10px; width: 220px; border: 1px solid #ccc; font-family: inherit; font-size: 13px; border-radius: 3px; }
+		.form-row input[type="text"]:focus, .form-row input[type="password"]:focus, .form-row select:focus { outline: none; border-color: #06c; box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.15); }
+		.alert-error { padding: 10px 15px; margin: 10px 0; border: 1px solid #c33; background: #fef0f0; color: #c33; border-radius: 3px; }
+		.alert-success { padding: 10px 15px; margin: 10px 0; border: 1px solid #3a3; background: #f0fef0; color: #3a3; border-radius: 3px; }
+		.section { margin-top: 20px; padding: 15px; border: 1px solid #eee; border-radius: 4px; }
+		.section > h2:first-child { margin-top: 0; }
+		.section > h2 + .setting-desc { margin: 0 0 12px 0; }
+		.actions { margin-top: 15px; }
+		.info-table th { width: 180px; background: none; font-weight: normal; color: #666; text-transform: none; letter-spacing: 0; font-size: 14px; }
+		.info-table td { font-family: monospace; }
+		.setting-item { margin: 0 0 5px 0; }
+		.setting-item + .setting-desc + .setting-item { margin-top: 15px; }
+		.setting-item label { display: inline; width: auto; font-weight: normal; cursor: pointer; }
+		.setting-item input[type="checkbox"] { margin-right: 6px; vertical-align: middle; }
+		.setting-item input[type="number"] { width: 80px; padding: 4px 8px; border: 1px solid #ccc; border-radius: 3px; font-size: 13px; font-family: inherit; margin-left: 8px; }
+		.setting-item input[type="number"]:focus { outline: none; border-color: #06c; box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.15); }
+		.setting-desc { margin: 4px 0 0 0; font-size: 12px; color: #666; line-height: 1.4; }
+		@media (max-width: 768px) {
+			nav { padding: 0 10px; }
+			nav .brand { margin-right: 15px; }
+			nav a.tab { padding: 10px 8px; font-size: 13px; }
+			main { padding: 15px; }
+			main.centered { margin: 30px auto; padding: 15px; }
+			.form-row label { width: 120px; }
+			.form-row input[type="text"], .form-row input[type="password"], .form-row select { width: 160px; }
+			.share-url-group { flex-wrap: wrap; }
+			.share-url-group .share-url-input { width: 100%; }
+		}
+	</style>
+}
+
+templ navbar(username string, isAdmin bool, activeTab string) {
+	<nav>
+		<span class="brand">🎧 goPodder</span>
+		if username != "" {
+			<a href="/users" class={ "tab", templ.KV("active", activeTab == "users") }>Users</a>
+			if isAdmin {
+				<a href="/admin/accounts" class={ "tab", templ.KV("active", activeTab == "accounts") }>Accounts</a>
+				<a href="/admin/settings" class={ "tab", templ.KV("active", activeTab == "settings") }>Settings</a>
+			}
+			<a href="/status" class={ "tab", templ.KV("active", activeTab == "status") }>Status</a>
+			<span class="spacer"></span>
+			<a href="/account" class="user">
+				{ username }
+				if isAdmin {
+					<span class="role">(admin)</span>
+				}
+			</a>
+			<form method="POST" action="/logout">
+				@csrfField()
+				<button type="submit" class="logout-btn">Logout</button>
+			</form>
+		} else {
+			<span class="spacer"></span>
+		}
+	</nav>
+}
+
+templ layout(username string, isAdmin bool, activeTab string) {
+	<!DOCTYPE html>
+	<html>
+		<head>
+			@baseHead()
+		</head>
+		<body>
+			@navbar(username, isAdmin, activeTab)
+			<main>
+				{ children... }
+			</main>
+		</body>
+	</html>
+}
+
+templ centeredLayout() {
+	<!DOCTYPE html>
+	<html>
+		<head>
+			@baseHead()
+		</head>
+		<body>
+			@navbar("", false, "")
+			<main class="centered">
+				{ children... }
+			</main>
+		</body>
+	</html>
+}
+
+templ alertError(msg string) {
+	if msg != "" {
+		<div class="alert-error">{ msg }</div>
+	}
+}
+
+templ alertSuccess(msg string) {
+	if msg != "" {
+		<div class="alert-success">{ msg }</div>
+	}
+}
