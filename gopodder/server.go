@@ -53,6 +53,8 @@ func Run(logger *slog.Logger, cfg Config) error {
 		go startDebugServer(logger, cfg.DebugAddr)
 	}
 
+	logger.Info("goPodder", "version", cfg.Build.Version, "revision", cfg.Build.Revision, "go", cfg.Build.GoVersion, "platform", cfg.Build.Platform)
+
 	errCh := make(chan error, 1)
 	go func() {
 		logger.Info("starting server", "addr", listenAddr)
