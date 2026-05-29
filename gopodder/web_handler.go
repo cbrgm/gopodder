@@ -814,6 +814,10 @@ func (h *WebHandler) handleCreateAccount(w http.ResponseWriter, r *http.Request)
 	if role != RoleAdmin {
 		role = RoleStandard
 	}
+	if _, err := h.store.GetAccount(r.Context(), username); err == nil {
+		http.Redirect(w, r, "/admin/accounts?error=Username+already+exists.", http.StatusSeeOther)
+		return
+	}
 	id := uuid.New().String()
 	if err := h.store.CreateAccount(r.Context(), id, username, hashPassword(password), role, time.Now()); err != nil {
 		h.logger.Error("failed to create account", "err", err, "username", username)
