@@ -61,6 +61,8 @@ func (a *API) handleGetSubscriptions(w http.ResponseWriter, r *http.Request) {
 	}
 	username := UsernameFromContext(r.Context())
 
+	_ = a.store.UpsertDevice(r.Context(), username, deviceID, DeviceUpdate{})
+
 	subs, err := a.store.GetSubscriptions(r.Context(), username)
 	if err != nil {
 		a.logger.Error("failed to get subscriptions", "err", err)
@@ -118,6 +120,8 @@ func (a *API) handleGetSubscriptionChanges(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	username := UsernameFromContext(r.Context())
+
+	_ = a.store.UpsertDevice(r.Context(), username, deviceID, DeviceUpdate{})
 
 	since := parseQueryInt64(r, "since", 0)
 
