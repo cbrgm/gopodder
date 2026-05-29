@@ -1081,7 +1081,7 @@ func UserDetailPage(data UserDetailData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 84, " <div class=\"section\"><h2>Devices</h2><p class=\"setting-desc\">Devices are registered automatically by your podcast apps. All devices share the same subscriptions and stay in sync.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 84, " <div class=\"section\"><h2>Devices</h2><p class=\"setting-desc\">Devices register automatically when your podcast app syncs and share the same subscriptions. Removing one here cleans up the list, but it will reappear on the next sync unless you change the user's password.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
