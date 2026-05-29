@@ -1,7 +1,9 @@
 # 🎧 goPodder
 
-[![GitHub release](https://img.shields.io/github/release/cbrgm/gopodder.svg)](https://github.com/cbrgm/gopodder)
+[![GitHub release](https://img.shields.io/github/release/cbrgm/gopodder.svg)](https://github.com/cbrgm/gopodder/releases/latest)
 [![Go Report Card](https://goreportcard.com/badge/github.com/cbrgm/gopodder)](https://goreportcard.com/report/github.com/cbrgm/gopodder)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/cbrgm/gopodder)](https://github.com/cbrgm/gopodder/blob/main/go.mod)
+[![License](https://img.shields.io/github/license/cbrgm/gopodder)](https://github.com/cbrgm/gopodder/blob/main/LICENSE)
 [![go-lint-test](https://github.com/cbrgm/gopodder/actions/workflows/go-lint-test.yml/badge.svg)](https://github.com/cbrgm/gopodder/actions/workflows/go-lint-test.yml)
 [![container](https://github.com/cbrgm/gopodder/actions/workflows/container.yml/badge.svg)](https://github.com/cbrgm/gopodder/actions/workflows/container.yml)
 
