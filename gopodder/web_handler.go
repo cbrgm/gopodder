@@ -643,6 +643,7 @@ func (h *WebHandler) importOPML(ctx context.Context, username string, r *http.Re
 	if err != nil {
 		return 0, err
 	}
+	urls = filterValidURLs(urls)
 	now := time.Now().Unix()
 	for _, u := range urls {
 		_ = h.store.ReactivateSubscription(ctx, username, u, now)
