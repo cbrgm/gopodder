@@ -4,7 +4,6 @@ import "context"
 
 const RepoURL = "https://github.com/cbrgm/gopodder"
 
-
 type contextKey string
 
 const ContextKeyCSRFToken contextKey = "csrf_token"
