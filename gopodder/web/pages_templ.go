@@ -1161,7 +1161,7 @@ func UserDetailPage(data UserDetailData) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 92, "\" style=\"display:inline;\" onsubmit=\"return confirm('Delete this device? This cannot be undone.');\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 92, "\" style=\"display:inline;\" onsubmit=\"return confirm('Remove this device from the list?');\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}

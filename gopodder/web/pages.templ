@@ -365,7 +365,7 @@ templ UserDetailPage(data UserDetailData) {
 								<td>{ dev.Type }</td>
 								<td class="muted">{ dev.LastActivity }</td>
 								<td>
-									<form method="POST" action={ templ.SafeURL(data.BasePath + "/devices/" + dev.ID + "/delete") } style="display:inline;" onsubmit="return confirm('Delete this device? This cannot be undone.');">
+									<form method="POST" action={ templ.SafeURL(data.BasePath + "/devices/" + dev.ID + "/delete") } style="display:inline;" onsubmit="return confirm('Remove this device from the list?');">
 										@csrfField()
 										<button type="submit" class="btn btn-danger">Delete</button>
 									</form>
