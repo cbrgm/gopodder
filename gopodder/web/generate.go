@@ -1,3 +1,3 @@
 package web
 
-//go:generate go tool templ generate
+//go:generate env GOOS= GOARCH= GOARM= go tool templ generate

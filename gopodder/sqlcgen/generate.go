@@ -1,3 +1,3 @@
 package sqlcgen
 
-//go:generate go tool sqlc generate -f ../../sqlc.yaml
+//go:generate env GOOS= GOARCH= GOARM= go tool sqlc generate -f ../../sqlc.yaml
