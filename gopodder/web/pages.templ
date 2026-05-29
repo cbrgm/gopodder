@@ -7,8 +7,8 @@ import (
 
 templ SetupPage(errMsg string) {
 	@centeredLayout() {
-		<h1>Setup</h1>
-		<p>No accounts exist yet. Create the admin account to get started.</p>
+		<h1>Welcome to goPodder</h1>
+		<p class="page-desc">Your sync server is ready. Create an admin account to manage this instance.</p>
 		@alertError(errMsg)
 		<form method="POST" action="/setup">
 			<div class="form-row">
@@ -25,9 +25,10 @@ templ SetupPage(errMsg string) {
 			</div>
 			<div class="form-row">
 				<label></label>
-				<button type="submit" class="btn btn-primary">Create Admin Account</button>
+				<button type="submit" class="btn btn-primary">Get Started</button>
 			</div>
 		</form>
+		<p class="setting-desc" style="margin-top: 20px; text-align: center;">Next: go to Users, create a goPodder user, then log in with that username and password in your podcast app.</p>
 	}
 }
 
@@ -509,7 +510,7 @@ templ UserDetailPage(data UserDetailData) {
 templ UserManagementPage(data UserManagementData) {
 	@layout(data.Account, data.IsAdmin, "users") {
 		<h1>Users</h1>
-		<p class="page-desc">goPodder users are the identities your podcast apps use to sync subscriptions and episode progress. Each user can be connected to multiple devices.</p>
+		<p class="page-desc">goPodder users are the credentials your podcast apps use to log in and sync. Enter these in your app's gPodder sync settings (username and password) along with your server URL. Each user can be connected to multiple devices.</p>
 		@alertError(data.Error)
 		@alertSuccess(data.Flash)
 		if data.CanCreateUsers {
