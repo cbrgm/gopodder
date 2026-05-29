@@ -85,6 +85,10 @@ func (a *API) handleLogin(w http.ResponseWriter, r *http.Request) {
 	sessionID := uuid.New().String()
 	_ = a.store.UpdateUserSession(r.Context(), username, &sessionID, time.Now())
 
+	maxAge, _ := a.store.GetSetting(r.Context(), SettingSessionMaxAge)
+	maxAgeHours, _ := strconv.ParseInt(maxAge, 10, 64)
+	maxAgeHours = cmp.Or(maxAgeHours, defaultSessionMaxAgeHours)
+
 	secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
 	http.SetCookie(w, &http.Cookie{
 		Name:     "sessionid",
@@ -93,6 +97,7 @@ func (a *API) handleLogin(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true,
 		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
+		MaxAge:   int(maxAgeHours) * 3600,
 	})
 
 	a.logger.Debug("user logged in", "username", username)

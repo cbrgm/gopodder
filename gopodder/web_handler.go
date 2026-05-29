@@ -330,6 +330,12 @@ func (h *WebHandler) handleSelfDeleteAccount(w http.ResponseWriter, r *http.Requ
 
 	h.deleteAccountCascade(r.Context(), acct.ID)
 	h.logger.Info("account self-deleted", "username", acct.Username)
+	http.SetCookie(w, &http.Cookie{
+		Name:   "web_session",
+		Value:  "",
+		Path:   "/",
+		MaxAge: -1,
+	})
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
@@ -637,6 +643,7 @@ func (h *WebHandler) importOPML(ctx context.Context, username string, r *http.Re
 	if err != nil {
 		return 0, err
 	}
+	urls = filterValidURLs(urls)
 	now := time.Now().Unix()
 	for _, u := range urls {
 		_ = h.store.ReactivateSubscription(ctx, username, u, now)
@@ -807,6 +814,10 @@ func (h *WebHandler) handleCreateAccount(w http.ResponseWriter, r *http.Request)
 	if role != RoleAdmin {
 		role = RoleStandard
 	}
+	if _, err := h.store.GetAccount(r.Context(), username); err == nil {
+		http.Redirect(w, r, "/admin/accounts?error=Username+already+exists.", http.StatusSeeOther)
+		return
+	}
 	id := uuid.New().String()
 	if err := h.store.CreateAccount(r.Context(), id, username, hashPassword(password), role, time.Now()); err != nil {
 		h.logger.Error("failed to create account", "err", err, "username", username)
@@ -823,6 +834,10 @@ func (h *WebHandler) handleUpdateAccount(w http.ResponseWriter, r *http.Request)
 	role := r.FormValue("role")
 
 	if username != "" {
+		if !isValidUsername(username) {
+			http.Redirect(w, r, "/admin/accounts/"+id+"?error=Invalid+username.", http.StatusSeeOther)
+			return
+		}
 		_ = h.store.UpdateAccountUsername(r.Context(), id, username)
 	}
 	if role == RoleAdmin || role == RoleStandard {
