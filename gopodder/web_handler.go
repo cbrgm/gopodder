@@ -330,6 +330,12 @@ func (h *WebHandler) handleSelfDeleteAccount(w http.ResponseWriter, r *http.Requ
 
 	h.deleteAccountCascade(r.Context(), acct.ID)
 	h.logger.Info("account self-deleted", "username", acct.Username)
+	http.SetCookie(w, &http.Cookie{
+		Name:   "web_session",
+		Value:  "",
+		Path:   "/",
+		MaxAge: -1,
+	})
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
