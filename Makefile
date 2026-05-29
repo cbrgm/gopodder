@@ -74,11 +74,6 @@ lint:
 generate:
 	go generate $(GENERATE)
 
-.PHONY: sqlc
-sqlc:
-	sqlc generate
-	cp db/schema.sql gopodder/sqlcgen/schema.sql
-
 .PHONY: test
 test:
 	go test -coverprofile coverage.out $(PACKAGES)
