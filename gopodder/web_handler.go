@@ -218,6 +218,7 @@ func (h *WebHandler) handleLoginSubmit(w http.ResponseWriter, r *http.Request) {
 
 	_ = h.store.UpdateAccountLastLogin(r.Context(), acct.ID, time.Now())
 
+	maxAge := cmp.Or(h.getSettingInt(r.Context(), SettingSessionMaxAge), defaultSessionMaxAgeHours)
 	http.SetCookie(w, &http.Cookie{
 		Name:     "web_session",
 		Value:    sessionID,
@@ -225,6 +226,7 @@ func (h *WebHandler) handleLoginSubmit(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true,
 		Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
 		SameSite: http.SameSiteLaxMode,
+		MaxAge:   int(maxAge) * 3600,
 	})
 	h.logger.Info("account logged in", "username", username)
 	http.Redirect(w, r, "/", http.StatusSeeOther)
