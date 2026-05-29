@@ -834,6 +834,10 @@ func (h *WebHandler) handleUpdateAccount(w http.ResponseWriter, r *http.Request)
 	role := r.FormValue("role")
 
 	if username != "" {
+		if !isValidUsername(username) {
+			http.Redirect(w, r, "/admin/accounts/"+id+"?error=Invalid+username.", http.StatusSeeOther)
+			return
+		}
 		_ = h.store.UpdateAccountUsername(r.Context(), id, username)
 	}
 	if role == RoleAdmin || role == RoleStandard {
