@@ -1339,6 +1339,99 @@ func TestHandleSelfDeleteSubscription(t *testing.T) {
 	})
 }
 
+func TestHandleAdminDeleteAPIKey(t *testing.T) {
+	store := newMockStore()
+	api := newTestAPI(store)
+	handler := api.Handler()
+
+	sid := "admin-session"
+	store.accounts["admin-id"].SessionID = &sid
+
+	store.apiKeys = append(store.apiKeys, APIKey{
+		ID: "key-to-revoke", AccountID: "admin-id", Name: "victim-key",
+		Prefix: "gp_aaaa0000", Hash: "h", Role: RoleStandard,
+	})
+
+	r := httptest.NewRequest(http.MethodGet, "/admin/accounts/admin-id", nil)
+	r.AddCookie(&http.Cookie{Name: "web_session", Value: sid})
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+	csrf := extractCSRF(w.Body.String())
+
+	t.Run("revokes key and redirects", func(t *testing.T) {
+		r = httptest.NewRequest(http.MethodPost, "/admin/accounts/admin-id/keys/key-to-revoke/delete",
+			strings.NewReader("csrf_token="+csrf))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		r.AddCookie(&http.Cookie{Name: "web_session", Value: sid})
+		w = httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+
+		if w.Code != http.StatusSeeOther {
+			t.Fatalf("expected redirect, got %d", w.Code)
+		}
+		loc := w.Header().Get("Location")
+		if !strings.Contains(loc, "flash=API+key+revoked") {
+			t.Errorf("expected revoked flash, got %q", loc)
+		}
+
+		keys, _ := store.ListAPIKeysByAccount(t.Context(), "admin-id")
+		if len(keys) != 0 {
+			t.Errorf("expected 0 keys after revoke, got %d", len(keys))
+		}
+	})
+
+	t.Run("cannot revoke key from different account", func(t *testing.T) {
+		store.apiKeys = append(store.apiKeys, APIKey{
+			ID: "other-key", AccountID: "other-account", Name: "not-mine",
+			Prefix: "gp_bbbb0000", Hash: "h", Role: RoleStandard,
+		})
+
+		r = httptest.NewRequest(http.MethodPost, "/admin/accounts/admin-id/keys/other-key/delete",
+			strings.NewReader("csrf_token="+csrf))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		r.AddCookie(&http.Cookie{Name: "web_session", Value: sid})
+		w = httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+
+		keys, _ := store.ListAPIKeysByAccount(t.Context(), "other-account")
+		if len(keys) != 1 {
+			t.Errorf("key from other account should not be deleted, got %d keys", len(keys))
+		}
+	})
+}
+
+func TestHandleAccountEditPage_ShowsAPIKeys(t *testing.T) {
+	store := newMockStore()
+	api := newTestAPI(store)
+	handler := api.Handler()
+
+	sid := "admin-session"
+	store.accounts["admin-id"].SessionID = &sid
+
+	store.apiKeys = append(store.apiKeys, APIKey{
+		ID: "visible-key", AccountID: "admin-id", Name: "my-automation",
+		Prefix: "gp_cccc0000", Hash: "h", Role: RoleStandard,
+	})
+
+	r := httptest.NewRequest(http.MethodGet, "/admin/accounts/admin-id", nil)
+	r.AddCookie(&http.Cookie{Name: "web_session", Value: sid})
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "my-automation") {
+		t.Error("expected API key name to appear on account edit page")
+	}
+	if !strings.Contains(w.Body.String(), "gp_cccc0000") {
+		t.Error("expected API key prefix to appear on account edit page")
+	}
+	if !strings.Contains(w.Body.String(), "Revoke") {
+		t.Error("expected Revoke button on account edit page")
+	}
+}
+
 func TestHandleCreateAPIKey_LimitEnforced(t *testing.T) {
 	store := newMockStore()
 	api := newTestAPI(store)

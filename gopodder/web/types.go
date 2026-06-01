@@ -50,6 +50,7 @@ type AccountEditData struct {
 	Account     string
 	EditAccount AccountData
 	Users       []UserData
+	APIKeys     []APIKeyData
 	Flash       string
 	Error       string
 }

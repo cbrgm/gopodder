@@ -330,6 +330,41 @@ templ AccountEditPage(data AccountEditData) {
 				</div>
 			</form>
 		</div>
+		<div class="section">
+			<h2>API Keys</h2>
+			<p class="setting-desc">API keys belonging to this account. Revoking a key will immediately disconnect any application using it.</p>
+			if len(data.APIKeys) == 0 {
+				<p>No API keys.</p>
+			} else {
+				<div class="table-wrap">
+					<table>
+						<tr>
+							<th>Name</th>
+							<th>Prefix</th>
+							<th>Role</th>
+							<th>Created</th>
+							<th>Last Used</th>
+							<th>Actions</th>
+						</tr>
+						for _, key := range data.APIKeys {
+							<tr>
+								<td>{ key.Name }</td>
+								<td class="mono">{ key.Prefix }...</td>
+								<td>{ key.Role }</td>
+								<td class="muted">{ key.CreatedAt }</td>
+								<td class="muted">{ key.LastUsed }</td>
+								<td>
+									<form method="POST" action={ templ.SafeURL("/admin/accounts/" + data.EditAccount.ID + "/keys/" + key.ID + "/delete") } style="display:inline;" onsubmit="return confirm('Revoke this API key? Applications using it will lose access immediately.');">
+										@csrfField()
+										<button type="submit" class="btn btn-danger">Revoke</button>
+									</form>
+								</td>
+							</tr>
+						}
+					</table>
+				</div>
+			}
+		</div>
 		<div class="actions"><a href="/admin/accounts" class="btn">Back to Accounts</a></div>
 	}
 }
