@@ -1635,6 +1635,7 @@ func TestSessionExpiry(t *testing.T) {
 
 func TestHandlePublicOPML(t *testing.T) {
 	store := newMockStore()
+	store.settings[SettingAllowSharing] = "true"
 	token := "test-share-token"
 	store.users["gpuser1"] = &User{Username: "gpuser1", PWHash: hashPassword("pass"), AccountID: "acct1", ShareToken: &token}
 	store.subscriptions["gpuser1"] = []string{"http://a.com/feed", "http://b.com/feed"}
@@ -1693,6 +1694,7 @@ func TestHandlePublicOPML(t *testing.T) {
 
 func TestHandlePublicRSS(t *testing.T) {
 	store := newMockStore()
+	store.settings[SettingAllowSharing] = "true"
 	token := "test-share-token"
 	store.users["gpuser1"] = &User{Username: "gpuser1", PWHash: hashPassword("pass"), AccountID: "acct1", ShareToken: &token}
 	store.subscriptions["gpuser1"] = []string{"http://a.com/feed", "http://b.com/feed"}
