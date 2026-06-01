@@ -262,18 +262,7 @@ func (h *WebHandler) handleSelfAccountPage(w http.ResponseWriter, r *http.Reques
 
 	var keys []web.APIKeyData
 	if h.apiKeysAllowed(r.Context(), acct) {
-		stored, _ := h.store.ListAPIKeysByAccount(r.Context(), acct.ID)
-		keys = make([]web.APIKeyData, 0, len(stored))
-		for _, k := range stored {
-			keys = append(keys, web.APIKeyData{
-				ID:        k.ID,
-				Name:      k.Name,
-				Prefix:    k.Prefix,
-				Role:      k.Role,
-				CreatedAt: formatTimestamp(k.CreatedAt),
-				LastUsed:  optionalTimeAgo(k.LastUsed),
-			})
-		}
+		keys = h.buildAPIKeysData(r.Context(), acct.ID)
 	}
 
 	var newKey string
@@ -667,6 +656,22 @@ func (h *WebHandler) buildUsersData(ctx context.Context, accountID string) []web
 	return usersData
 }
 
+func (h *WebHandler) buildAPIKeysData(ctx context.Context, accountID string) []web.APIKeyData {
+	stored, _ := h.store.ListAPIKeysByAccount(ctx, accountID)
+	keys := make([]web.APIKeyData, 0, len(stored))
+	for _, k := range stored {
+		keys = append(keys, web.APIKeyData{
+			ID:        k.ID,
+			Name:      k.Name,
+			Prefix:    k.Prefix,
+			Role:      k.Role,
+			CreatedAt: formatTimestamp(k.CreatedAt),
+			LastUsed:  optionalTimeAgo(k.LastUsed),
+		})
+	}
+	return keys
+}
+
 func (h *WebHandler) buildUserDetailData(ctx context.Context, r *http.Request, acct *Account, username, activeTab, basePath, backURL, backLabel string) web.UserDetailData {
 	devices, _ := h.store.ListDevices(ctx, username)
 	subs, _ := h.store.GetSubscriptions(ctx, username)
@@ -786,18 +791,7 @@ func (h *WebHandler) handleAccountEditPage(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	stored, _ := h.store.ListAPIKeysByAccount(r.Context(), id)
-	keys := make([]web.APIKeyData, 0, len(stored))
-	for _, k := range stored {
-		keys = append(keys, web.APIKeyData{
-			ID:        k.ID,
-			Name:      k.Name,
-			Prefix:    k.Prefix,
-			Role:      k.Role,
-			CreatedAt: formatTimestamp(k.CreatedAt),
-			LastUsed:  optionalTimeAgo(k.LastUsed),
-		})
-	}
+	keys := h.buildAPIKeysData(r.Context(), id)
 
 	data := web.AccountEditData{
 		Account:     currentAcct.Username,
