@@ -1158,7 +1158,7 @@ func parseFormInt(s string) int {
 func (h *WebHandler) isSettingEnabled(ctx context.Context, key string) bool {
 	val, err := h.store.GetSetting(ctx, key)
 	if err != nil {
-		return key == SettingAllowUserCreation || key == SettingAllowSharing
+		return key == SettingAllowUserCreation
 	}
 	return val == "true"
 }
