@@ -96,6 +96,7 @@ func (h *WebHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /admin/accounts/{id}", h.withAdmin(h.handleUpdateAccount))
 	mux.HandleFunc("POST /admin/accounts/{id}/password", h.withAdmin(h.handleChangeAccountPassword))
 	mux.HandleFunc("POST /admin/accounts/{id}/delete", h.withAdmin(h.handleDeleteAccount))
+	mux.HandleFunc("POST /admin/accounts/{id}/keys/{keyId}/delete", h.withAdmin(h.handleAdminDeleteAPIKey))
 
 	// Admin: gPodder Users (under account)
 	mux.HandleFunc("POST /admin/accounts/{id}/users", h.withAdmin(h.handleCreateUser))
@@ -261,18 +262,7 @@ func (h *WebHandler) handleSelfAccountPage(w http.ResponseWriter, r *http.Reques
 
 	var keys []web.APIKeyData
 	if h.apiKeysAllowed(r.Context(), acct) {
-		stored, _ := h.store.ListAPIKeysByAccount(r.Context(), acct.ID)
-		keys = make([]web.APIKeyData, 0, len(stored))
-		for _, k := range stored {
-			keys = append(keys, web.APIKeyData{
-				ID:        k.ID,
-				Name:      k.Name,
-				Prefix:    k.Prefix,
-				Role:      k.Role,
-				CreatedAt: formatTimestamp(k.CreatedAt),
-				LastUsed:  optionalTimeAgo(k.LastUsed),
-			})
-		}
+		keys = h.buildAPIKeysData(r.Context(), acct.ID)
 	}
 
 	var newKey string
@@ -666,6 +656,22 @@ func (h *WebHandler) buildUsersData(ctx context.Context, accountID string) []web
 	return usersData
 }
 
+func (h *WebHandler) buildAPIKeysData(ctx context.Context, accountID string) []web.APIKeyData {
+	stored, _ := h.store.ListAPIKeysByAccount(ctx, accountID)
+	keys := make([]web.APIKeyData, 0, len(stored))
+	for _, k := range stored {
+		keys = append(keys, web.APIKeyData{
+			ID:        k.ID,
+			Name:      k.Name,
+			Prefix:    k.Prefix,
+			Role:      k.Role,
+			CreatedAt: formatTimestamp(k.CreatedAt),
+			LastUsed:  optionalTimeAgo(k.LastUsed),
+		})
+	}
+	return keys
+}
+
 func (h *WebHandler) buildUserDetailData(ctx context.Context, r *http.Request, acct *Account, username, activeTab, basePath, backURL, backLabel string) web.UserDetailData {
 	devices, _ := h.store.ListDevices(ctx, username)
 	subs, _ := h.store.GetSubscriptions(ctx, username)
@@ -785,10 +791,13 @@ func (h *WebHandler) handleAccountEditPage(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	keys := h.buildAPIKeysData(r.Context(), id)
+
 	data := web.AccountEditData{
 		Account:     currentAcct.Username,
 		EditAccount: web.AccountData{ID: acct.ID, Username: acct.Username, Role: acct.Role},
 		Users:       h.buildUsersData(r.Context(), id),
+		APIKeys:     keys,
 		Flash:       r.URL.Query().Get("flash"),
 		Error:       r.URL.Query().Get("error"),
 	}
@@ -882,6 +891,14 @@ func (h *WebHandler) handleDeleteAccount(w http.ResponseWriter, r *http.Request)
 	}
 	h.logger.Info("account deleted", "username", username)
 	http.Redirect(w, r, "/admin/accounts?flash=Account+deleted.", http.StatusSeeOther)
+}
+
+func (h *WebHandler) handleAdminDeleteAPIKey(w http.ResponseWriter, r *http.Request) {
+	accountID := r.PathValue("id")
+	keyID := r.PathValue("keyId")
+	_ = h.store.DeleteAPIKey(r.Context(), keyID, accountID)
+	h.logger.Info("API key revoked by admin", "key_id", keyID, "account_id", accountID)
+	http.Redirect(w, r, "/admin/accounts/"+accountID+"?flash=API+key+revoked.", http.StatusSeeOther)
 }
 
 // Admin: gPodder Users (under account)
