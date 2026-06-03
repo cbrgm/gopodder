@@ -7,9 +7,10 @@ require (
 	github.com/alecthomas/kong v1.15.0
 	github.com/dustin/go-humanize v1.0.1
 	github.com/google/uuid v1.6.0
-	github.com/jackc/pgx/v5 v5.9.2
+	github.com/jackc/pgx/v5 v5.10.0
+	github.com/prometheus/client_golang v1.23.2
 	golang.org/x/crypto v0.52.0
-	modernc.org/sqlite v1.50.1
+	modernc.org/sqlite v1.51.0
 )
 
 require (
@@ -47,7 +48,6 @@ require (
 	github.com/pingcap/failpoint v0.0.0-20240528011301-b51a646c7c86 // indirect
 	github.com/pingcap/log v1.1.0 // indirect
 	github.com/pingcap/tidb/pkg/parser v0.0.0-20260418072757-ce92298d1124 // indirect
-	github.com/prometheus/client_golang v1.23.2 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.66.1 // indirect
 	github.com/prometheus/procfs v0.16.1 // indirect
