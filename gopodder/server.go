@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strconv"
@@ -15,12 +16,13 @@ import (
 )
 
 type Config struct {
-	ListenAddr string
-	DebugAddr  string
-	DBBackend  string
-	DBPath     string
-	DBPostgres string
-	Build      BuildInfo
+	ListenAddr         string
+	DebugAddr          string
+	DBBackend          string
+	DBPath             string
+	DBPostgres         string
+	DBPostgresPassword string
+	Build              BuildInfo
 }
 
 func Run(logger *slog.Logger, cfg Config) error {
@@ -171,8 +173,28 @@ func openStore(cfg Config) (Store, error) {
 	case "sqlite", "":
 		return NewSQLiteStore(cfg.DBPath)
 	case "postgres":
-		return NewPostgresStore(cfg.DBPostgres)
+		dsn, err := buildPostgresDSN(cfg.DBPostgres, cfg.DBPostgresPassword)
+		if err != nil {
+			return nil, err
+		}
+		return NewPostgresStore(dsn)
 	default:
 		return nil, fmt.Errorf("unsupported database backend: %q (supported: sqlite, postgres)", cfg.DBBackend)
 	}
+}
+
+func buildPostgresDSN(dsn, password string) (string, error) {
+	if password == "" {
+		return dsn, nil
+	}
+	u, err := url.Parse(dsn)
+	if err != nil {
+		return "", fmt.Errorf("parsing postgres connection string: %w", err)
+	}
+	if u.User != nil {
+		u.User = url.UserPassword(u.User.Username(), password)
+	} else {
+		u.User = url.UserPassword("", password)
+	}
+	return u.String(), nil
 }
