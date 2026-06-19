@@ -45,14 +45,17 @@ Open `http://localhost:8080` in your browser. On first launch you'll be asked to
 
 ### Configuration flags
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--listen-address` | `0.0.0.0:8080` | HTTP listen address (host:port) |
-| `--debug-address` | | Debug/metrics listen address (disabled if empty) |
-| `--db-backend` | `sqlite` | Database backend (`sqlite` or `postgres`) |
-| `--db-path` | `gopodder.db` | Path to SQLite database file |
-| `--db-postgres` | | PostgreSQL connection string |
-| `--log-level` | `info` | Log level (`debug`, `info`, `warn`, `error`) |
+All flags can also be set via environment variables. The env var takes precedence over the default but the flag takes precedence over the env var
+
+| Flag | Env var | Default | Description |
+|------|---------|---------|-------------|
+| `--listen-address` | `GOPODDER_LISTEN_ADDRESS` | `0.0.0.0:8080` | HTTP listen address (host:port) |
+| `--debug-address` | `GOPODDER_DEBUG_ADDRESS` | | Debug/metrics listen address (disabled if empty) |
+| `--db-backend` | `GOPODDER_DB_BACKEND` | `sqlite` | Database backend (`sqlite` or `postgres`) |
+| `--db-path` | `GOPODDER_DB_PATH` | `gopodder.db` | Path to SQLite database file |
+| `--db-postgres` | `GOPODDER_DB_POSTGRES` | | PostgreSQL connection string |
+| `--db-postgres-password` | `GOPODDER_DB_POSTGRES_PASSWORD` | | PostgreSQL password (injected into connection string) |
+| `--log-level` | `GOPODDER_LOG_LEVEL` | `info` | Log level (`debug`, `info`, `warn`, `error`) |
 
 ### Database backends
 
@@ -107,6 +110,21 @@ services:
 volumes:
   pg-data:
 ```
+
+### Podman Quadlet with secrets
+
+If you run Podman and want to avoid putting the database password in plain text, use `GOPODDER_DB_POSTGRES_PASSWORD` with a [Podman secret](https://docs.podman.io/en/latest/markdown/podman-secret-create.1.html):
+
+```ini
+[Container]
+Image=ghcr.io/cbrgm/gopodder:latest
+ContainerName=gopodder
+Environment=GOPODDER_DB_BACKEND=postgres
+Environment=GOPODDER_DB_POSTGRES=postgres://gopodder@pg_server:5432/gopodder
+Secret=gopodder_db_pass,type=env,target=GOPODDER_DB_POSTGRES_PASSWORD
+```
+
+The password is injected into the connection string at startup. Special characters in the password are URL-encoded automatically
 
 ## Connecting your podcast app
 
