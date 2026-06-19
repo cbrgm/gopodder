@@ -10,6 +10,58 @@ import (
 	"time"
 )
 
+func TestBuildPostgresDSN(t *testing.T) {
+	tests := []struct {
+		name     string
+		dsn      string
+		password string
+		want     string
+		wantErr  bool
+	}{
+		{
+			name:     "empty password returns dsn unchanged",
+			dsn:      "postgres://user@host:5432/db",
+			password: "",
+			want:     "postgres://user@host:5432/db",
+		},
+		{
+			name:     "password injected with existing user",
+			dsn:      "postgres://gopodder@host:5432/db",
+			password: "secret",
+			want:     "postgres://gopodder:secret@host:5432/db",
+		},
+		{
+			name:     "password replaces existing password",
+			dsn:      "postgres://gopodder:oldpass@host:5432/db",
+			password: "newpass",
+			want:     "postgres://gopodder:newpass@host:5432/db",
+		},
+		{
+			name:     "password with special characters is escaped",
+			dsn:      "postgres://user@host:5432/db",
+			password: "p@ss:w/rd",
+			want:     "postgres://user:p%40ss%3Aw%2Frd@host:5432/db",
+		},
+		{
+			name:     "password with no user in dsn",
+			dsn:      "postgres://host:5432/db",
+			password: "secret",
+			want:     "postgres://:secret@host:5432/db",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := buildPostgresDSN(tt.dsn, tt.password)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("buildPostgresDSN() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if got != tt.want {
+				t.Errorf("buildPostgresDSN() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestOpenStore_SQLite(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")

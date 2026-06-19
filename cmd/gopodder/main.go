@@ -18,18 +18,19 @@ var (
 )
 
 type CLI struct {
-	LogLevel string           `name:"log-level" default:"info" enum:"debug,info,warn,error" help:"Log level (debug, info, warn, error)."`
+	LogLevel string           `name:"log-level" default:"info" enum:"debug,info,warn,error" env:"GOPODDER_LOG_LEVEL" help:"Log level (debug, info, warn, error)."`
 	Version  kong.VersionFlag `name:"version" help:"Print version and exit."`
 
 	Serve ServeCmd `cmd:"" default:"withargs" help:"Start the gPodder sync server."`
 }
 
 type ServeCmd struct {
-	ListenAddr string `name:"listen-address" default:"0.0.0.0:8080" help:"HTTP listen address (host:port)."`
-	DebugAddr  string `name:"debug-address" default:"" help:"Debug/metrics listen address (e.g. 127.0.0.1:6060). Disabled if empty."`
-	DBBackend  string `name:"db-backend" default:"sqlite" enum:"sqlite,postgres" help:"Database backend (sqlite, postgres)."`
-	DBPath     string `name:"db-path" default:"gopodder.db" help:"Path to SQLite database file."`
-	DBPostgres string `name:"db-postgres" default:"" help:"PostgreSQL connection string (e.g. postgres://user:pass@host:5432/dbname)."`
+	ListenAddr         string `name:"listen-address" default:"0.0.0.0:8080" env:"GOPODDER_LISTEN_ADDRESS" help:"HTTP listen address (host:port)."`
+	DebugAddr          string `name:"debug-address" default:"" env:"GOPODDER_DEBUG_ADDRESS" help:"Debug/metrics listen address (e.g. 127.0.0.1:6060). Disabled if empty."`
+	DBBackend          string `name:"db-backend" default:"sqlite" enum:"sqlite,postgres" env:"GOPODDER_DB_BACKEND" help:"Database backend (sqlite, postgres)."`
+	DBPath             string `name:"db-path" default:"gopodder.db" env:"GOPODDER_DB_PATH" help:"Path to SQLite database file."`
+	DBPostgres         string `name:"db-postgres" default:"" env:"GOPODDER_DB_POSTGRES" help:"PostgreSQL connection string (e.g. postgres://user:pass@host:5432/dbname)."`
+	DBPostgresPassword string `name:"db-postgres-password" default:"" env:"GOPODDER_DB_POSTGRES_PASSWORD" help:"PostgreSQL password (injected into connection string if set)."`
 }
 
 func main() {
@@ -45,11 +46,12 @@ func main() {
 	switch ctx.Command() {
 	case "serve", "":
 		if err := gopodder.Run(logger, gopodder.Config{
-			ListenAddr: cli.Serve.ListenAddr,
-			DebugAddr:  cli.Serve.DebugAddr,
-			DBBackend:  cli.Serve.DBBackend,
-			DBPath:     cli.Serve.DBPath,
-			DBPostgres: cli.Serve.DBPostgres,
+			ListenAddr:         cli.Serve.ListenAddr,
+			DebugAddr:          cli.Serve.DebugAddr,
+			DBBackend:          cli.Serve.DBBackend,
+			DBPath:             cli.Serve.DBPath,
+			DBPostgres:         cli.Serve.DBPostgres,
+			DBPostgresPassword: cli.Serve.DBPostgresPassword,
 			Build: gopodder.BuildInfo{
 				Version:   Version,
 				Revision:  Revision,
