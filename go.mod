@@ -4,7 +4,7 @@ go 1.26.3
 
 require (
 	github.com/a-h/templ v0.3.1020
-	github.com/alecthomas/kong v1.15.0
+	github.com/alecthomas/kong v1.16.0
 	github.com/dustin/go-humanize v1.0.1
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.10.0
