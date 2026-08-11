@@ -141,6 +141,7 @@ Tested with:
 - [gPodder](https://gpodder.github.io/) (Desktop, Linux/macOS/Windows)
 - [Cardo](https://github.com/cardo-podcast/cardo) (Windows/macOS/Linux)
 - [KDE Kasts](https://apps.kde.org/kasts/) (Linux/Android/Windows)
+- [PinePods](https://pinepods.online/) (Server)
 
 Any client that supports the gPodder.net sync protocol should work. If you've tested goPodder with a client not listed here, please [open an issue](https://github.com/cbrgm/gopodder/issues) and let us know
 
