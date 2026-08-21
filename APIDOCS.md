@@ -112,7 +112,7 @@ POST /api/v1/users
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `username` | string | yes | 1-64 characters, letters/numbers/dots/dashes/underscores |
-| `password` | string | yes | Must meet the instance's minimum password length |
+| `password` | string | yes | Must meet the instance's minimum password length, and at most 72 bytes (bcrypt limit) |
 
 **Response (201):**
 
@@ -122,7 +122,7 @@ POST /api/v1/users
 
 **Errors:**
 
-- `400` — Invalid username or password too short
+- `400` — Invalid username, or password too short or longer than 72 bytes
 - `403` — User creation is disabled, or user limit reached
 - `409` — Username already exists
 
@@ -358,7 +358,7 @@ POST /api/v1/accounts
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `username` | string | yes | 1-64 characters |
-| `password` | string | yes | Must meet minimum password length |
+| `password` | string | yes | Must meet minimum password length, and at most 72 bytes (bcrypt limit) |
 | `role` | string | no | `standard` (default) or `admin` |
 
 **Response (201):**

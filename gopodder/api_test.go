@@ -294,7 +294,7 @@ func TestHandleEmptyJSON(t *testing.T) {
 
 func TestHandleGetAllSubscriptions_OPML(t *testing.T) {
 	store := newMockStore()
-	store.users["testuser"] = &User{Username: "testuser", PWHash: hashPassword("testpass")}
+	store.users["testuser"] = &User{Username: "testuser", PWHash: testHash("testpass")}
 	store.subscriptions["testuser"] = []string{"https://example.com/feed.xml"}
 	api := newTestAPI(store)
 	handler := api.Handler()

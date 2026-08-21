@@ -9,7 +9,7 @@ import (
 
 func TestHandleGetEpisodes(t *testing.T) {
 	store := newMockStore()
-	store.users["testuser"] = &User{Username: "testuser", PWHash: hashPassword("testpass")}
+	store.users["testuser"] = &User{Username: "testuser", PWHash: testHash("testpass")}
 	device := "phone1"
 	store.episodes["testuser"] = []Episode{
 		{Podcast: "http://pod.com/feed", Episode: "http://pod.com/ep1.mp3", Device: &device, Action: "play"},
@@ -46,7 +46,7 @@ func TestHandleGetEpisodes(t *testing.T) {
 
 	t.Run("empty episodes returns empty array not null", func(t *testing.T) {
 		store2 := newMockStore()
-		store2.users["testuser"] = &User{Username: "testuser", PWHash: hashPassword("testpass")}
+		store2.users["testuser"] = &User{Username: "testuser", PWHash: testHash("testpass")}
 		api2 := newTestAPI(store2)
 		handler2 := api2.Handler()
 
@@ -113,7 +113,7 @@ func TestHandleGetEpisodes(t *testing.T) {
 
 func TestHandleUploadEpisodes(t *testing.T) {
 	store := newMockStore()
-	store.users["testuser"] = &User{Username: "testuser", PWHash: hashPassword("testpass")}
+	store.users["testuser"] = &User{Username: "testuser", PWHash: testHash("testpass")}
 	api := newTestAPI(store)
 	handler := api.Handler()
 

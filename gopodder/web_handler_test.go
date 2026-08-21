@@ -241,7 +241,7 @@ func TestWithAdmin_NonAdmin(t *testing.T) {
 	store := newMockStore()
 	api := newTestAPI(store)
 	sid := "user-session"
-	store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: hashPassword("pass"), Role: RoleStandard, SessionID: &sid}
+	store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid}
 	h := NewWebHandler(api)
 
 	called := false
@@ -570,7 +570,7 @@ func TestHandleSelfCreateUser_Disabled(t *testing.T) {
 	store.settings["allow_user_creation"] = "false"
 	api := newTestAPI(store)
 	sid := "user-session"
-	store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: hashPassword("pass"), Role: RoleStandard, SessionID: &sid}
+	store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid}
 	h := NewWebHandler(api)
 
 	r := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader("username=gpuser1&password=testpass1"))
@@ -597,7 +597,7 @@ func TestHandleSelfCreateUser_Enabled(t *testing.T) {
 	store.settings[SettingAllowUserCreation] = "true"
 	api := newTestAPI(store)
 	sid := "user-session"
-	store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: hashPassword("pass"), Role: RoleStandard, SessionID: &sid}
+	store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid}
 	h := NewWebHandler(api)
 
 	r := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader("username=gpuser1&password=testpass1"))
@@ -743,7 +743,7 @@ func TestHandleSelfCreateUser_LimitReached(t *testing.T) {
 	store.settings[SettingMaxUsersPerAccount] = "1"
 	api := newTestAPI(store)
 	sid := "user-session"
-	store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: hashPassword("pass"), Role: RoleStandard, SessionID: &sid}
+	store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid}
 	store.users["existing"] = &User{Username: "existing", AccountID: "u1"}
 	h := NewWebHandler(api)
 
@@ -831,6 +831,32 @@ func TestCheckPasswordLength(t *testing.T) {
 			t.Errorf("expected empty for long password, got %q", msg)
 		}
 	})
+
+	t.Run("password exactly at bcrypt limit", func(t *testing.T) {
+		store.settings[SettingMinPasswordLength] = "8"
+		if msg := h.checkPasswordLength(t.Context(), strings.Repeat("a", 72)); msg != "" {
+			t.Errorf("expected empty for 72-byte password, got %q", msg)
+		}
+	})
+
+	t.Run("password over bcrypt limit", func(t *testing.T) {
+		store.settings[SettingMinPasswordLength] = "8"
+		msg := h.checkPasswordLength(t.Context(), strings.Repeat("a", 73))
+		if msg == "" {
+			t.Fatal("expected error for 73-byte password")
+		}
+		if !strings.Contains(msg, "72") {
+			t.Errorf("error should mention the byte limit, got %q", msg)
+		}
+	})
+
+	t.Run("multi-byte password over bcrypt limit", func(t *testing.T) {
+		store.settings[SettingMinPasswordLength] = "8"
+		// 40 runes, 80 bytes: under any sane rune limit, over the bcrypt one.
+		if msg := h.checkPasswordLength(t.Context(), strings.Repeat("ä", 40)); msg == "" {
+			t.Error("expected error for password exceeding 72 bytes in UTF-8")
+		}
+	})
 }
 
 func TestHandleRegisterSubmit_PasswordTooShort(t *testing.T) {
@@ -853,13 +879,55 @@ func TestHandleRegisterSubmit_PasswordTooShort(t *testing.T) {
 	}
 }
 
+func TestHandleRegisterSubmit_PasswordTooLong(t *testing.T) {
+	store := newMockStore()
+	store.settings[SettingSelfRegistration] = "true"
+	api := newTestAPI(store)
+	h := NewWebHandler(api)
+
+	long := strings.Repeat("a", 100)
+	body := "username=newuser&password=" + long + "&password2=" + long
+	r := httptest.NewRequest(http.MethodPost, "/register", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	h.handleRegisterSubmit(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d (renders error page)", w.Code, http.StatusOK)
+	}
+	if len(store.accounts) != 1 {
+		t.Error("account should not have been created")
+	}
+}
+
+func TestHandleSetupSubmit_PasswordTooLong(t *testing.T) {
+	store := newMockStore()
+	api := newTestAPI(store)
+	h := NewWebHandler(api)
+	clear(store.accounts) // first-run setup only happens with no accounts
+
+	long := strings.Repeat("a", 100)
+	body := "username=admin&password=" + long + "&password2=" + long
+	r := httptest.NewRequest(http.MethodPost, "/setup", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	h.handleSetupSubmit(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d (renders error page)", w.Code, http.StatusOK)
+	}
+	if len(store.accounts) != 0 {
+		t.Error("admin account should not have been created")
+	}
+}
+
 func TestHandleSelfCreateUser_PasswordTooShort(t *testing.T) {
 	store := newMockStore()
 	store.settings[SettingAllowUserCreation] = "true"
 	store.settings[SettingMinPasswordLength] = "10"
 	api := newTestAPI(store)
 	sid := "user-session"
-	store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: hashPassword("pass"), Role: RoleStandard, SessionID: &sid}
+	store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid}
 	h := NewWebHandler(api)
 
 	r := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader("username=gpuser1&password=short"))
@@ -931,7 +999,7 @@ func TestHandleSelfAccountPage(t *testing.T) {
 	store := newMockStore()
 	api := newTestAPI(store)
 	sid := "user-session"
-	store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: hashPassword("pass"), Role: RoleStandard, SessionID: &sid}
+	store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid}
 	handler := api.Handler()
 
 	r := httptest.NewRequest(http.MethodGet, "/account", nil)
@@ -954,7 +1022,7 @@ func TestHandleSelfChangeAccountPassword(t *testing.T) {
 	store := newMockStore()
 	api := newTestAPI(store)
 	sid := "user-session"
-	store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: hashPassword("oldpass"), Role: RoleStandard, SessionID: &sid}
+	store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: testHash("oldpass"), Role: RoleStandard, SessionID: &sid}
 	handler := api.Handler()
 
 	t.Run("wrong current password", func(t *testing.T) {
@@ -1036,7 +1104,7 @@ func TestHandleSelfDeleteAccount(t *testing.T) {
 		store := newMockStore()
 		api := newTestAPI(store)
 		sid := "user-session"
-		store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: hashPassword("pass"), Role: RoleStandard, SessionID: &sid}
+		store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid}
 		store.users["gpuser1"] = &User{Username: "gpuser1", PWHash: "hash", AccountID: "u1"}
 		store.subscriptions["gpuser1"] = []string{"http://feed.com"}
 		handler := api.Handler()
@@ -1068,7 +1136,7 @@ func TestHandleSelfDeleteAccount(t *testing.T) {
 		store := newMockStore()
 		api := newTestAPI(store)
 		sid := "admin-session"
-		store.accounts["admin-id"] = &Account{ID: "admin-id", Username: "admin", PWHash: hashPassword("admin"), Role: RoleAdmin, SessionID: &sid}
+		store.accounts["admin-id"] = &Account{ID: "admin-id", Username: "admin", PWHash: testHash("admin"), Role: RoleAdmin, SessionID: &sid}
 		handler := api.Handler()
 
 		r := httptest.NewRequest(http.MethodPost, "/account/delete", strings.NewReader(withCSRF("admin-session", "")))
@@ -1094,7 +1162,7 @@ func TestHandleSelfImportOPML(t *testing.T) {
 	store := newMockStore()
 	api := newTestAPI(store)
 	sid := "user-session"
-	store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: hashPassword("pass"), Role: RoleStandard, SessionID: &sid}
+	store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid}
 	store.users["gpuser1"] = &User{Username: "gpuser1", PWHash: "hash", AccountID: "u1"}
 	store.devices["gpuser1"] = []Device{{ID: "phone", Type: "mobile"}}
 	handler := api.Handler()
@@ -1132,7 +1200,7 @@ func TestHandleSelfImportOPML(t *testing.T) {
 		store2 := newMockStore()
 		api2 := newTestAPI(store2)
 		sid2 := "user-session"
-		store2.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: hashPassword("pass"), Role: RoleStandard, SessionID: &sid2}
+		store2.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid2}
 		store2.users["gpuser1"] = &User{Username: "gpuser1", PWHash: "hash", AccountID: "u1"}
 		handler2 := api2.Handler()
 
@@ -1204,7 +1272,7 @@ func TestHandleSelfAddSubscription(t *testing.T) {
 	store := newMockStore()
 	api := newTestAPI(store)
 	sid := "user-session"
-	store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: hashPassword("pass"), Role: RoleStandard, SessionID: &sid}
+	store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid}
 	store.users["gpuser1"] = &User{Username: "gpuser1", PWHash: "hash", AccountID: "u1"}
 	store.devices["gpuser1"] = []Device{{ID: "phone", Type: "mobile"}}
 	handler := api.Handler()
@@ -1294,7 +1362,7 @@ func TestHandleSelfDeleteSubscription(t *testing.T) {
 	store := newMockStore()
 	api := newTestAPI(store)
 	sid := "user-session"
-	store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: hashPassword("pass"), Role: RoleStandard, SessionID: &sid}
+	store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid}
 	store.users["gpuser1"] = &User{Username: "gpuser1", PWHash: "hash", AccountID: "u1"}
 	store.devices["gpuser1"] = []Device{{ID: "phone", Type: "mobile"}, {ID: "laptop", Type: "desktop"}}
 	store.subscriptions["gpuser1"] = []string{"http://feed1.com", "http://feed2.com", "http://feed3.com"}
@@ -1438,7 +1506,7 @@ func TestHandleCreateAPIKey_LimitEnforced(t *testing.T) {
 	handler := api.Handler()
 
 	sid := "user-session"
-	store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: hashPassword("pass"), Role: RoleStandard, SessionID: &sid}
+	store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid}
 	store.settings[SettingAllowAPIKeys] = "true"
 	store.settings[SettingMaxAPIKeys] = "2"
 
@@ -1512,7 +1580,7 @@ func TestHandleCreateAPIKey_ZeroSettingUsesDefault(t *testing.T) {
 	handler := api.Handler()
 
 	sid := "user-session"
-	store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: hashPassword("pass"), Role: RoleStandard, SessionID: &sid}
+	store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid}
 	store.settings[SettingAllowAPIKeys] = "true"
 	store.settings[SettingMaxAPIKeys] = "0"
 
@@ -1599,7 +1667,7 @@ func TestSessionExpiry(t *testing.T) {
 	sid := "web-session"
 	expired := time.Now().Add(-200 * time.Hour)
 	store.accounts["u1"] = &Account{
-		ID: "u1", Username: "user1", PWHash: hashPassword("pass"),
+		ID: "u1", Username: "user1", PWHash: testHash("pass"),
 		Role: RoleStandard, SessionID: &sid, SessionCreated: &expired,
 	}
 	handler := api.Handler()
@@ -1637,7 +1705,7 @@ func TestHandlePublicOPML(t *testing.T) {
 	store := newMockStore()
 	store.settings[SettingAllowSharing] = "true"
 	token := "test-share-token"
-	store.users["gpuser1"] = &User{Username: "gpuser1", PWHash: hashPassword("pass"), AccountID: "acct1", ShareToken: &token}
+	store.users["gpuser1"] = &User{Username: "gpuser1", PWHash: testHash("pass"), AccountID: "acct1", ShareToken: &token}
 	store.subscriptions["gpuser1"] = []string{"http://a.com/feed", "http://b.com/feed"}
 	api := NewAPI(nil, store, noopMetrics{}, BuildInfo{}, "localhost:8080", "sqlite")
 	h := NewWebHandler(api)
@@ -1696,7 +1764,7 @@ func TestHandlePublicRSS(t *testing.T) {
 	store := newMockStore()
 	store.settings[SettingAllowSharing] = "true"
 	token := "test-share-token"
-	store.users["gpuser1"] = &User{Username: "gpuser1", PWHash: hashPassword("pass"), AccountID: "acct1", ShareToken: &token}
+	store.users["gpuser1"] = &User{Username: "gpuser1", PWHash: testHash("pass"), AccountID: "acct1", ShareToken: &token}
 	store.subscriptions["gpuser1"] = []string{"http://a.com/feed", "http://b.com/feed"}
 	api := NewAPI(nil, store, noopMetrics{}, BuildInfo{}, "localhost:8080", "sqlite")
 	h := NewWebHandler(api)

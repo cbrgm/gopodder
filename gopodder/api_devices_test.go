@@ -9,7 +9,7 @@ import (
 
 func TestHandleListDevices(t *testing.T) {
 	store := newMockStore()
-	store.users["testuser"] = &User{Username: "testuser", PWHash: hashPassword("testpass")}
+	store.users["testuser"] = &User{Username: "testuser", PWHash: testHash("testpass")}
 	store.devices["testuser"] = []Device{
 		{ID: "phone1", Caption: "My Phone", Type: "mobile"},
 	}
@@ -41,7 +41,7 @@ func TestHandleListDevices(t *testing.T) {
 
 func TestHandleListDevices_Empty(t *testing.T) {
 	store := newMockStore()
-	store.users["testuser"] = &User{Username: "testuser", PWHash: hashPassword("testpass")}
+	store.users["testuser"] = &User{Username: "testuser", PWHash: testHash("testpass")}
 	api := newTestAPI(store)
 	handler := api.Handler()
 
@@ -64,7 +64,7 @@ func TestHandleListDevices_Empty(t *testing.T) {
 
 func TestHandleListDevices_Forbidden(t *testing.T) {
 	store := newMockStore()
-	store.users["testuser"] = &User{Username: "testuser", PWHash: hashPassword("testpass")}
+	store.users["testuser"] = &User{Username: "testuser", PWHash: testHash("testpass")}
 	api := newTestAPI(store)
 	handler := api.Handler()
 
@@ -79,7 +79,7 @@ func TestHandleListDevices_Forbidden(t *testing.T) {
 
 func TestHandleUpdateDevice(t *testing.T) {
 	store := newMockStore()
-	store.users["testuser"] = &User{Username: "testuser", PWHash: hashPassword("testpass")}
+	store.users["testuser"] = &User{Username: "testuser", PWHash: testHash("testpass")}
 	api := newTestAPI(store)
 	handler := api.Handler()
 
@@ -142,7 +142,7 @@ func TestHandleUpdateDevice(t *testing.T) {
 
 func TestHandleUpdateDevice_PersistsData(t *testing.T) {
 	store := newMockStore()
-	store.users["testuser"] = &User{Username: "testuser", PWHash: hashPassword("testpass")}
+	store.users["testuser"] = &User{Username: "testuser", PWHash: testHash("testpass")}
 	api := newTestAPI(store)
 	handler := api.Handler()
 

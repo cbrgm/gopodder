@@ -36,7 +36,7 @@ func TestHasOverlap(t *testing.T) {
 
 func TestHandleGetSubscriptions(t *testing.T) {
 	store := newMockStore()
-	store.users["testuser"] = &User{Username: "testuser", PWHash: hashPassword("testpass")}
+	store.users["testuser"] = &User{Username: "testuser", PWHash: testHash("testpass")}
 	store.subscriptions["testuser"] = []string{"http://a.com/feed", "http://b.com/feed"}
 	api := newTestAPI(store)
 	handler := api.Handler()
@@ -61,7 +61,7 @@ func TestHandleGetSubscriptions(t *testing.T) {
 
 	t.Run("empty user returns empty array not null", func(t *testing.T) {
 		store2 := newMockStore()
-		store2.users["testuser"] = &User{Username: "testuser", PWHash: hashPassword("testpass")}
+		store2.users["testuser"] = &User{Username: "testuser", PWHash: testHash("testpass")}
 		api2 := newTestAPI(store2)
 		handler2 := api2.Handler()
 
@@ -91,7 +91,7 @@ func TestHandleGetSubscriptions(t *testing.T) {
 
 func TestHandleGetAllSubscriptions(t *testing.T) {
 	store := newMockStore()
-	store.users["testuser"] = &User{Username: "testuser", PWHash: hashPassword("testpass")}
+	store.users["testuser"] = &User{Username: "testuser", PWHash: testHash("testpass")}
 	store.subscriptions["testuser"] = []string{"http://a.com/feed", "http://b.com/feed", "http://c.com/feed"}
 	api := newTestAPI(store)
 	handler := api.Handler()
@@ -116,7 +116,7 @@ func TestHandleGetAllSubscriptions(t *testing.T) {
 
 	t.Run("empty returns empty array", func(t *testing.T) {
 		store2 := newMockStore()
-		store2.users["testuser"] = &User{Username: "testuser", PWHash: hashPassword("testpass")}
+		store2.users["testuser"] = &User{Username: "testuser", PWHash: testHash("testpass")}
 		api2 := newTestAPI(store2)
 		handler2 := api2.Handler()
 
@@ -146,7 +146,7 @@ func TestHandleGetAllSubscriptions(t *testing.T) {
 
 func TestHandleUploadSubscriptions(t *testing.T) {
 	store := newMockStore()
-	store.users["testuser"] = &User{Username: "testuser", PWHash: hashPassword("testpass")}
+	store.users["testuser"] = &User{Username: "testuser", PWHash: testHash("testpass")}
 	store.subscriptions["testuser"] = []string{"http://old.com/feed"}
 	api := newTestAPI(store)
 	handler := api.Handler()
@@ -202,7 +202,7 @@ func TestHandleUploadSubscriptions(t *testing.T) {
 
 func TestHandleUploadSubscriptionChanges(t *testing.T) {
 	store := newMockStore()
-	store.users["testuser"] = &User{Username: "testuser", PWHash: hashPassword("testpass")}
+	store.users["testuser"] = &User{Username: "testuser", PWHash: testHash("testpass")}
 	api := newTestAPI(store)
 	handler := api.Handler()
 
@@ -263,7 +263,7 @@ func TestHandleUploadSubscriptionChanges(t *testing.T) {
 
 func TestHandleUploadSubscriptionChanges_UnmatchedRemoval(t *testing.T) {
 	store := newMockStore()
-	store.users["testuser"] = &User{Username: "testuser", PWHash: hashPassword("testpass")}
+	store.users["testuser"] = &User{Username: "testuser", PWHash: testHash("testpass")}
 	store.subscriptions["testuser"] = []string{"http://a.com", "http://b.com"}
 	api := newTestAPI(store)
 	handler := api.Handler()
@@ -317,7 +317,7 @@ func TestHandleUploadSubscriptionChanges_UnmatchedRemoval(t *testing.T) {
 
 func TestHandleUploadSubscriptionChanges_TimestampAdvances(t *testing.T) {
 	store := newMockStore()
-	store.users["testuser"] = &User{Username: "testuser", PWHash: hashPassword("testpass")}
+	store.users["testuser"] = &User{Username: "testuser", PWHash: testHash("testpass")}
 	api := newTestAPI(store)
 	handler := api.Handler()
 
@@ -343,7 +343,7 @@ func TestHandleUploadSubscriptionChanges_TimestampAdvances(t *testing.T) {
 
 func TestHandleGetSubscriptionChanges_TimestampAdvances(t *testing.T) {
 	store := newMockStore()
-	store.users["testuser"] = &User{Username: "testuser", PWHash: hashPassword("testpass")}
+	store.users["testuser"] = &User{Username: "testuser", PWHash: testHash("testpass")}
 	api := newTestAPI(store)
 	handler := api.Handler()
 
@@ -368,7 +368,7 @@ func TestHandleGetSubscriptionChanges_TimestampAdvances(t *testing.T) {
 
 func TestHandleGetSubscriptionChanges(t *testing.T) {
 	store := newMockStore()
-	store.users["testuser"] = &User{Username: "testuser", PWHash: hashPassword("testpass")}
+	store.users["testuser"] = &User{Username: "testuser", PWHash: testHash("testpass")}
 	api := newTestAPI(store)
 	handler := api.Handler()
 

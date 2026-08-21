@@ -15,6 +15,10 @@ type contextKey string
 
 const contextKeyUsername contextKey = "username"
 
+// maxPasswordBytes is the hard input limit of bcrypt. Longer passwords are
+// rejected during validation so they can never reach the hashing step.
+const maxPasswordBytes = 72
+
 func UsernameFromContext(ctx context.Context) string {
 	if v, ok := ctx.Value(contextKeyUsername).(string); ok {
 		return v
@@ -128,9 +132,15 @@ func extractSessionCookie(r *http.Request) string {
 	return cookie.Value
 }
 
-func hashPassword(password string) string {
-	hash, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	return string(hash)
+// hashPassword hashes a password with bcrypt. It fails for passwords longer
+// than maxPasswordBytes; callers must not store the returned hash on error, or
+// the account ends up with an empty hash and nobody can log into it.
+func hashPassword(password string) (string, error) {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", err
+	}
+	return string(hash), nil
 }
 
 func checkPassword(hash, password string) bool {

@@ -5,13 +5,17 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
 
 func TestHashPassword(t *testing.T) {
 	t.Run("produces bcrypt hash", func(t *testing.T) {
-		got := hashPassword("testpass")
+		got, err := hashPassword("testpass")
+		if err != nil {
+			t.Fatalf("hashPassword returned error: %v", err)
+		}
 		if got == "" {
 			t.Error("hashPassword returned empty string")
 		}
@@ -21,7 +25,7 @@ func TestHashPassword(t *testing.T) {
 	})
 
 	t.Run("checkPassword verifies correctly", func(t *testing.T) {
-		hash := hashPassword("hello")
+		hash := testHash("hello")
 		if !checkPassword(hash, "hello") {
 			t.Error("checkPassword should return true for correct password")
 		}
@@ -31,10 +35,30 @@ func TestHashPassword(t *testing.T) {
 	})
 
 	t.Run("different calls produce different hashes", func(t *testing.T) {
-		a := hashPassword("hello")
-		b := hashPassword("hello")
+		a := testHash("hello")
+		b := testHash("hello")
 		if a == b {
 			t.Error("bcrypt should produce different hashes due to random salt")
+		}
+	})
+
+	t.Run("accepts password at the bcrypt limit", func(t *testing.T) {
+		got, err := hashPassword(strings.Repeat("a", 72))
+		if err != nil {
+			t.Fatalf("hashPassword returned error for 72-byte password: %v", err)
+		}
+		if got == "" {
+			t.Error("hashPassword returned empty string for 72-byte password")
+		}
+	})
+
+	t.Run("reports an error instead of an empty hash for oversized passwords", func(t *testing.T) {
+		got, err := hashPassword(strings.Repeat("a", 73))
+		if err == nil {
+			t.Fatal("hashPassword should report an error for a 73-byte password")
+		}
+		if got != "" {
+			t.Errorf("hashPassword should return an empty hash on error, got %q", got)
 		}
 	})
 }
@@ -137,7 +161,7 @@ func TestHandleLogin(t *testing.T) {
 	store := newMockStore()
 	store.users["testuser"] = &User{
 		Username: "testuser",
-		PWHash:   hashPassword("testpass"),
+		PWHash:   testHash("testpass"),
 	}
 	api := newTestAPI(store)
 	handler := api.Handler()
@@ -200,7 +224,7 @@ func TestHandleLogin_RotatesSession(t *testing.T) {
 	sid := "old-session-123"
 	store.users["testuser"] = &User{
 		Username:  "testuser",
-		PWHash:    hashPassword("testpass"),
+		PWHash:    testHash("testpass"),
 		SessionID: &sid,
 	}
 	api := newTestAPI(store)
@@ -243,7 +267,7 @@ func TestHandleLogout(t *testing.T) {
 	now := time.Now()
 	store.users["testuser"] = &User{
 		Username:       "testuser",
-		PWHash:         hashPassword("testpass"),
+		PWHash:         testHash("testpass"),
 		SessionID:      &sid,
 		SessionCreated: &now,
 	}
@@ -286,7 +310,7 @@ func TestSessionBasedAuth(t *testing.T) {
 	now := time.Now()
 	store.users["testuser"] = &User{
 		Username:       "testuser",
-		PWHash:         hashPassword("testpass"),
+		PWHash:         testHash("testpass"),
 		SessionID:      &sid,
 		SessionCreated: &now,
 	}
@@ -332,7 +356,7 @@ func TestSessionBasedAuth(t *testing.T) {
 
 func TestRouteAuth_InvalidPaths(t *testing.T) {
 	store := newMockStore()
-	store.users["testuser"] = &User{Username: "testuser", PWHash: hashPassword("testpass")}
+	store.users["testuser"] = &User{Username: "testuser", PWHash: testHash("testpass")}
 	api := newTestAPI(store)
 	handler := api.Handler()
 
