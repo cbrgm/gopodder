@@ -178,13 +178,14 @@ func (h *WebHandler) handleSetupSubmit(w http.ResponseWriter, r *http.Request) {
 		_ = web.SetupPage("Passwords do not match.").Render(r.Context(), w)
 		return
 	}
-	if msg := h.checkPasswordLength(r.Context(), password); msg != "" {
+	pwhash, msg := h.hashNewPassword(r.Context(), password)
+	if msg != "" {
 		_ = web.SetupPage(msg).Render(r.Context(), w)
 		return
 	}
 
 	id := uuid.New().String()
-	if err := h.store.CreateAccount(r.Context(), id, username, hashPassword(password), RoleAdmin, time.Now()); err != nil {
+	if err := h.store.CreateAccount(r.Context(), id, username, pwhash, RoleAdmin, time.Now()); err != nil {
 		h.logger.Error("failed to create initial admin account", "err", err)
 		_ = web.SetupPage("Failed to create account.").Render(r.Context(), w)
 		return
@@ -302,11 +303,12 @@ func (h *WebHandler) handleSelfChangeAccountPassword(w http.ResponseWriter, r *h
 		http.Redirect(w, r, "/account?error=New+passwords+do+not+match.", http.StatusSeeOther)
 		return
 	}
-	if msg := h.checkPasswordLength(r.Context(), password); msg != "" {
+	pwhash, msg := h.hashNewPassword(r.Context(), password)
+	if msg != "" {
 		http.Redirect(w, r, "/account?error="+msg, http.StatusSeeOther)
 		return
 	}
-	_ = h.store.UpdateAccountPassword(r.Context(), acct.ID, hashPassword(password))
+	_ = h.store.UpdateAccountPassword(r.Context(), acct.ID, pwhash)
 	http.Redirect(w, r, "/account?flash=Password+updated.", http.StatusSeeOther)
 }
 
@@ -458,7 +460,8 @@ func (h *WebHandler) handleSelfCreateUser(w http.ResponseWriter, r *http.Request
 		http.Redirect(w, r, "/users?error=Username+must+be+1-64+characters+using+only+letters,+numbers,+dots,+dashes,+or+underscores.", http.StatusSeeOther)
 		return
 	}
-	if msg := h.checkPasswordLength(r.Context(), password); msg != "" {
+	pwhash, msg := h.hashNewPassword(r.Context(), password)
+	if msg != "" {
 		http.Redirect(w, r, "/users?error="+msg, http.StatusSeeOther)
 		return
 	}
@@ -466,7 +469,7 @@ func (h *WebHandler) handleSelfCreateUser(w http.ResponseWriter, r *http.Request
 		http.Redirect(w, r, "/users?error=Username+already+exists.+Please+choose+a+different+name.", http.StatusSeeOther)
 		return
 	}
-	if err := h.store.CreateUser(r.Context(), username, hashPassword(password), acct.ID); err != nil {
+	if err := h.store.CreateUser(r.Context(), username, pwhash, acct.ID); err != nil {
 		h.logger.Error("failed to create gpodder user", "err", err, "username", username, "account", acct.Username)
 		http.Redirect(w, r, "/users?error=Failed+to+create+user.", http.StatusSeeOther)
 		return
@@ -487,11 +490,12 @@ func (h *WebHandler) handleSelfChangeUserPassword(w http.ResponseWriter, r *http
 		http.Redirect(w, r, "/users/"+username+"?error=Passwords+do+not+match.", http.StatusSeeOther)
 		return
 	}
-	if msg := h.checkPasswordLength(r.Context(), password); msg != "" {
+	pwhash, msg := h.hashNewPassword(r.Context(), password)
+	if msg != "" {
 		http.Redirect(w, r, "/users/"+username+"?error="+msg, http.StatusSeeOther)
 		return
 	}
-	if err := h.store.UpdateUserPassword(r.Context(), username, hashPassword(password)); err != nil {
+	if err := h.store.UpdateUserPassword(r.Context(), username, pwhash); err != nil {
 		h.logger.Error("failed to update gpodder user password", "err", err, "username", username)
 	}
 	http.Redirect(w, r, "/users/"+username+"?flash=Password+updated.", http.StatusSeeOther)
@@ -816,7 +820,8 @@ func (h *WebHandler) handleCreateAccount(w http.ResponseWriter, r *http.Request)
 		http.Redirect(w, r, "/admin/accounts?error=Username+must+be+1-64+characters+using+only+letters,+numbers,+dots,+dashes,+or+underscores.", http.StatusSeeOther)
 		return
 	}
-	if msg := h.checkPasswordLength(r.Context(), password); msg != "" {
+	pwhash, msg := h.hashNewPassword(r.Context(), password)
+	if msg != "" {
 		http.Redirect(w, r, "/admin/accounts?error="+msg, http.StatusSeeOther)
 		return
 	}
@@ -828,7 +833,7 @@ func (h *WebHandler) handleCreateAccount(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	id := uuid.New().String()
-	if err := h.store.CreateAccount(r.Context(), id, username, hashPassword(password), role, time.Now()); err != nil {
+	if err := h.store.CreateAccount(r.Context(), id, username, pwhash, role, time.Now()); err != nil {
 		h.logger.Error("failed to create account", "err", err, "username", username)
 		http.Redirect(w, r, "/admin/accounts?error=Failed+to+create+account.", http.StatusSeeOther)
 		return
@@ -867,11 +872,12 @@ func (h *WebHandler) handleChangeAccountPassword(w http.ResponseWriter, r *http.
 		http.Redirect(w, r, "/admin/accounts/"+id+"?error=Passwords+do+not+match.", http.StatusSeeOther)
 		return
 	}
-	if msg := h.checkPasswordLength(r.Context(), password); msg != "" {
+	pwhash, msg := h.hashNewPassword(r.Context(), password)
+	if msg != "" {
 		http.Redirect(w, r, "/admin/accounts/"+id+"?error="+msg, http.StatusSeeOther)
 		return
 	}
-	_ = h.store.UpdateAccountPassword(r.Context(), id, hashPassword(password))
+	_ = h.store.UpdateAccountPassword(r.Context(), id, pwhash)
 	http.Redirect(w, r, "/admin/accounts/"+id+"?flash=Password+updated.", http.StatusSeeOther)
 }
 
@@ -929,11 +935,12 @@ func (h *WebHandler) handleChangeUserPassword(w http.ResponseWriter, r *http.Req
 		http.Redirect(w, r, redirect+"?error=Passwords+do+not+match.", http.StatusSeeOther)
 		return
 	}
-	if msg := h.checkPasswordLength(r.Context(), password); msg != "" {
+	pwhash, msg := h.hashNewPassword(r.Context(), password)
+	if msg != "" {
 		http.Redirect(w, r, redirect+"?error="+msg, http.StatusSeeOther)
 		return
 	}
-	if err := h.store.UpdateUserPassword(r.Context(), username, hashPassword(password)); err != nil {
+	if err := h.store.UpdateUserPassword(r.Context(), username, pwhash); err != nil {
 		h.logger.Error("failed to update gpodder user password", "err", err, "username", username)
 	}
 	http.Redirect(w, r, redirect+"?flash=Password+updated.", http.StatusSeeOther)
@@ -951,7 +958,8 @@ func (h *WebHandler) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/admin/accounts/"+accountID+"?error=Username+must+be+1-64+characters+using+only+letters,+numbers,+dots,+dashes,+or+underscores.", http.StatusSeeOther)
 		return
 	}
-	if msg := h.checkPasswordLength(r.Context(), password); msg != "" {
+	pwhash, msg := h.hashNewPassword(r.Context(), password)
+	if msg != "" {
 		http.Redirect(w, r, "/admin/accounts/"+accountID+"?error="+msg, http.StatusSeeOther)
 		return
 	}
@@ -963,7 +971,7 @@ func (h *WebHandler) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/admin/accounts/"+accountID+"?error=Username+already+exists.+Please+choose+a+different+name.", http.StatusSeeOther)
 		return
 	}
-	if err := h.store.CreateUser(r.Context(), username, hashPassword(password), accountID); err != nil {
+	if err := h.store.CreateUser(r.Context(), username, pwhash, accountID); err != nil {
 		h.logger.Error("failed to create gpodder user", "err", err, "username", username)
 		http.Redirect(w, r, "/admin/accounts/"+accountID+"?error=Failed+to+create+user.", http.StatusSeeOther)
 		return
@@ -1063,7 +1071,8 @@ func (h *WebHandler) handleRegisterSubmit(w http.ResponseWriter, r *http.Request
 		_ = web.RegisterPage(web.RegisterPageData{Error: "Passwords do not match."}).Render(r.Context(), w)
 		return
 	}
-	if msg := h.checkPasswordLength(r.Context(), password); msg != "" {
+	pwhash, msg := h.hashNewPassword(r.Context(), password)
+	if msg != "" {
 		_ = web.RegisterPage(web.RegisterPageData{Error: msg}).Render(r.Context(), w)
 		return
 	}
@@ -1074,7 +1083,7 @@ func (h *WebHandler) handleRegisterSubmit(w http.ResponseWriter, r *http.Request
 	}
 
 	id := uuid.New().String()
-	if err := h.store.CreateAccount(r.Context(), id, username, hashPassword(password), RoleStandard, time.Now()); err != nil {
+	if err := h.store.CreateAccount(r.Context(), id, username, pwhash, RoleStandard, time.Now()); err != nil {
 		h.logger.Error("failed to create self-registered account", "err", err, "username", username)
 		_ = web.RegisterPage(web.RegisterPageData{Error: "Failed to create account."}).Render(r.Context(), w)
 		return
@@ -1177,7 +1186,25 @@ func (h *WebHandler) checkPasswordLength(ctx context.Context, password string) s
 	if int64(len(password)) < minLen {
 		return fmt.Sprintf("Password must be at least %d characters.", minLen)
 	}
+	if len(password) > maxPasswordBytes {
+		return fmt.Sprintf("Password must be at most %d bytes long.", maxPasswordBytes)
+	}
 	return ""
+}
+
+// hashNewPassword validates and hashes a password chosen by a user. It returns
+// either a usable hash or a message to show the user, never both empty, so a
+// rejected password can never be stored as an empty hash.
+func (h *WebHandler) hashNewPassword(ctx context.Context, password string) (hash, errMsg string) {
+	if msg := h.checkPasswordLength(ctx, password); msg != "" {
+		return "", msg
+	}
+	hash, err := hashPassword(password)
+	if err != nil {
+		h.logger.Error("failed to hash password", "err", err)
+		return "", "Failed to process password."
+	}
+	return hash, ""
 }
 
 func (h *WebHandler) userLimitReached(ctx context.Context, accountID string) bool {

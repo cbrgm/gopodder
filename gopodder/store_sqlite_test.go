@@ -25,7 +25,7 @@ func TestSQLiteStore_CreateAndGetUser(t *testing.T) {
 	store := newTestStore(t)
 	ctx := t.Context()
 
-	pwhash := hashPassword("secret")
+	pwhash := testHash("secret")
 	if err := store.CreateUser(ctx, "alice", pwhash, testAccountID); err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestSQLiteStore_SessionManagement(t *testing.T) {
 	store := newTestStore(t)
 	ctx := t.Context()
 
-	if err := store.CreateUser(ctx, "bob", hashPassword("pass"), testAccountID); err != nil {
+	if err := store.CreateUser(ctx, "bob", testHash("pass"), testAccountID); err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}
 
@@ -1582,7 +1582,7 @@ func TestSQLiteStore_ShareToken(t *testing.T) {
 	store := newTestStore(t)
 	ctx := t.Context()
 
-	if err := store.CreateUser(ctx, "alice", hashPassword("pass"), testAccountID); err != nil {
+	if err := store.CreateUser(ctx, "alice", testHash("pass"), testAccountID); err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}
 
@@ -1694,7 +1694,7 @@ func TestSQLiteStore_DeleteEpisodesOlderThan(t *testing.T) {
 	store := newTestStore(t)
 	ctx := t.Context()
 
-	if err := store.CreateUser(ctx, "alice", hashPassword("pass"), testAccountID); err != nil {
+	if err := store.CreateUser(ctx, "alice", testHash("pass"), testAccountID); err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}
 
@@ -2019,8 +2019,8 @@ func TestSQLiteStore_UsersCRUD(t *testing.T) {
 	store := newTestStore(t)
 	ctx := t.Context()
 
-	_ = store.CreateUser(ctx, "alice", hashPassword("pass"), testAccountID)
-	_ = store.CreateUser(ctx, "bob", hashPassword("pass"), testAccountID)
+	_ = store.CreateUser(ctx, "alice", testHash("pass"), testAccountID)
+	_ = store.CreateUser(ctx, "bob", testHash("pass"), testAccountID)
 
 	t.Run("list all users", func(t *testing.T) {
 		users, err := store.ListUsers(ctx)

@@ -435,9 +435,19 @@ func (m *mockStore) SetSetting(_ context.Context, key, value string) error {
 func (m *mockStore) Ping(_ context.Context) error { return nil }
 func (m *mockStore) Close() error                  { return nil }
 
+// testHash hashes a fixture password, panicking on the errors that can only
+// come from a malformed test fixture.
+func testHash(password string) string {
+	hash, err := hashPassword(password)
+	if err != nil {
+		panic(err)
+	}
+	return hash
+}
+
 func newTestAPI(store Store) *API {
 	if ms, ok := store.(*mockStore); ok {
-		ms.accounts["admin-id"] = &Account{ID: "admin-id", Username: "admin", PWHash: hashPassword("admin"), Role: RoleAdmin}
+		ms.accounts["admin-id"] = &Account{ID: "admin-id", Username: "admin", PWHash: testHash("admin"), Role: RoleAdmin}
 	}
 	logger := slog.Default()
 	return NewAPI(logger, store, noopMetrics{}, BuildInfo{

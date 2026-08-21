@@ -358,12 +358,34 @@ func TestAPIv1_AdminCreateAccount(t *testing.T) {
 	}
 }
 
+func TestAPIv1_AdminCreateAccount_PasswordTooLong(t *testing.T) {
+	store := newMockStore()
+	api := newTestAPI(store)
+	handler := api.Handler()
+
+	token := "gp_aabbccdd11223344aabbccdd11223344"
+	seedAPIKey(store, "admin-id", RoleAdmin, token)
+
+	w := httptest.NewRecorder()
+	body := `{"username":"longpw","password":"` + strings.Repeat("a", 100) + `","role":"standard"}`
+	handler.ServeHTTP(w, bearerRequest("POST", "/api/v1/accounts", token, body))
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	for _, a := range store.accounts {
+		if a.Username == "longpw" {
+			t.Fatal("account should not have been created")
+		}
+	}
+}
+
 func TestAPIv1_AdminDeleteAccount(t *testing.T) {
 	store := newMockStore()
 	api := newTestAPI(store)
 	handler := api.Handler()
 
-	store.accounts["target-id"] = &Account{ID: "target-id", Username: "target", PWHash: hashPassword("pass"), Role: RoleStandard}
+	store.accounts["target-id"] = &Account{ID: "target-id", Username: "target", PWHash: testHash("pass"), Role: RoleStandard}
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
 	seedAPIKey(store, "admin-id", RoleAdmin, token)
@@ -462,6 +484,29 @@ func TestAPIv1_CreateUser_PasswordTooShort(t *testing.T) {
 	}
 }
 
+func TestAPIv1_CreateUser_PasswordTooLong(t *testing.T) {
+	store := newMockStore()
+	api := newTestAPI(store)
+	handler := api.Handler()
+
+	token := "gp_aabbccdd11223344aabbccdd11223344"
+	seedAPIKey(store, "admin-id", RoleStandard, token)
+
+	w := httptest.NewRecorder()
+	body := `{"username":"longpw","password":"` + strings.Repeat("a", 100) + `"}`
+	handler.ServeHTTP(w, bearerRequest("POST", "/api/v1/users", token, body))
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "72") {
+		t.Errorf("expected password length error mentioning the byte limit, got: %s", w.Body.String())
+	}
+	if _, err := store.GetUser(t.Context(), "longpw"); err == nil {
+		t.Error("user should not have been created")
+	}
+}
+
 func TestAPIv1_CreateUser_LimitReached(t *testing.T) {
 	store := newMockStore()
 	api := newTestAPI(store)
@@ -513,7 +558,7 @@ func TestAPIv1_CreateUser_CreationDisabled(t *testing.T) {
 	handler := api.Handler()
 
 	store.settings["allow_user_creation"] = "false"
-	store.accounts["std-id"] = &Account{ID: "std-id", Username: "stduser", PWHash: hashPassword("pass"), Role: RoleStandard}
+	store.accounts["std-id"] = &Account{ID: "std-id", Username: "stduser", PWHash: testHash("pass"), Role: RoleStandard}
 
 	token := "gp_bbccddee11223344aabbccdd11223344"
 	seedAPIKey(store, "std-id", RoleStandard, token)
@@ -697,7 +742,7 @@ func TestAPIv1_AdminCannotDeleteOtherAdmin(t *testing.T) {
 	api := newTestAPI(store)
 	handler := api.Handler()
 
-	store.accounts["other-admin"] = &Account{ID: "other-admin", Username: "otheradmin", PWHash: hashPassword("pass"), Role: RoleAdmin}
+	store.accounts["other-admin"] = &Account{ID: "other-admin", Username: "otheradmin", PWHash: testHash("pass"), Role: RoleAdmin}
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
 	seedAPIKey(store, "admin-id", RoleAdmin, token)

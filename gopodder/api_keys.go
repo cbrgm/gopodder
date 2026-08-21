@@ -172,7 +172,7 @@ func (a *API) handleAPICreateUser(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid username"})
 		return
 	}
-	if msg := a.checkMinPasswordLength(r.Context(), req.Password); msg != "" {
+	if msg := a.checkPasswordLength(r.Context(), req.Password); msg != "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
 		return
 	}
@@ -188,7 +188,13 @@ func (a *API) handleAPICreateUser(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "username already exists"})
 		return
 	}
-	if err := a.store.CreateUser(r.Context(), req.Username, hashPassword(req.Password), acct.ID); err != nil {
+	pwhash, err := hashPassword(req.Password)
+	if err != nil {
+		a.logger.Error("failed to hash password", "err", err, "username", req.Username)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create user"})
+		return
+	}
+	if err := a.store.CreateUser(r.Context(), req.Username, pwhash, acct.ID); err != nil {
 		a.logger.Error("failed to create user", "err", err, "username", req.Username)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create user"})
 		return
@@ -207,12 +213,15 @@ func (a *API) userCreationAllowed(ctx context.Context, acct *Account) bool {
 	return val == "true"
 }
 
-func (a *API) checkMinPasswordLength(ctx context.Context, password string) string {
+func (a *API) checkPasswordLength(ctx context.Context, password string) string {
 	val, _ := a.store.GetSetting(ctx, SettingMinPasswordLength)
 	minLen, _ := strconv.ParseInt(val, 10, 64)
 	minLen = cmp.Or(minLen, 8)
 	if int64(len(password)) < minLen {
 		return fmt.Sprintf("password must be at least %d characters", minLen)
+	}
+	if len(password) > maxPasswordBytes {
+		return fmt.Sprintf("password must be at most %d bytes long", maxPasswordBytes)
 	}
 	return ""
 }
@@ -412,7 +421,7 @@ func (a *API) handleAPICreateAccount(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid username"})
 		return
 	}
-	if msg := a.checkMinPasswordLength(r.Context(), req.Password); msg != "" {
+	if msg := a.checkPasswordLength(r.Context(), req.Password); msg != "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
 		return
 	}
@@ -424,8 +433,14 @@ func (a *API) handleAPICreateAccount(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "account already exists"})
 		return
 	}
+	pwhash, err := hashPassword(req.Password)
+	if err != nil {
+		a.logger.Error("failed to hash password", "err", err, "username", req.Username)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create account"})
+		return
+	}
 	id := uuid.New().String()
-	if err := a.store.CreateAccount(r.Context(), id, req.Username, hashPassword(req.Password), req.Role, time.Now()); err != nil {
+	if err := a.store.CreateAccount(r.Context(), id, req.Username, pwhash, req.Role, time.Now()); err != nil {
 		a.logger.Error("failed to create account", "err", err, "username", req.Username)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create account"})
 		return
