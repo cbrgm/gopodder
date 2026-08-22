@@ -21,7 +21,7 @@ TAGS ?=
 
 ifndef OUTPUT
 	ifeq ($(GITHUB_REF_TYPE), tag)
-		OUTPUT ?= $(subst v,,$(GITHUB_REF_NAME))
+		OUTPUT ?= $(patsubst v%,%,$(GITHUB_REF_NAME))
 	else
 		OUTPUT ?= testing
 	endif
@@ -29,9 +29,9 @@ endif
 
 ifndef VERSION
 	ifeq ($(GITHUB_REF_TYPE), tag)
-		VERSION ?= $(subst v,,$(GITHUB_REF_NAME))
+		VERSION ?= $(patsubst v%,%,$(GITHUB_REF_NAME))
 	else
-		VERSION ?= $(shell git describe --tags --dirty 2>/dev/null || echo dev)
+		VERSION ?= $(patsubst v%,%,$(shell git describe --tags --dirty 2>/dev/null || echo dev))
 	endif
 endif
 
