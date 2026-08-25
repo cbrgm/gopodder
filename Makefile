@@ -78,6 +78,16 @@ generate:
 test:
 	go test -coverprofile coverage.out $(PACKAGES)
 
+# Prints the release notes for the most recent tag, using the same invocation
+# the go-binaries workflow publishes with. Run `make changelog CLIFF_ARGS=--unreleased`
+# to preview the notes for the commits since that tag instead.
+CLIFF_ARGS ?= --latest
+
+.PHONY: changelog
+changelog:
+	@command -v git-cliff >/dev/null 2>&1 || { echo "git-cliff not installed: https://git-cliff.org/docs/installation" >&2; exit 1; }
+	@git-cliff --config cliff.toml $(CLIFF_ARGS) --strip all
+
 .PHONY: install
 install: $(SOURCES)
 	go install -v -tags '$(TAGS)' -ldflags '$(LDFLAGS)' ./cmd/$(NAME)
