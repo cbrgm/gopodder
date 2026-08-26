@@ -585,10 +585,7 @@ func (s *SQLiteStore) GetEpisodes(ctx context.Context, params EpisodeQuery) ([]E
 
 func (s *SQLiteStore) UpdateEpisodes(ctx context.Context, username string, episodes []Episode, timestamp int64) error {
 	for i := 0; i < len(episodes); i += episodeBatchSize {
-		end := i + episodeBatchSize
-		if end > len(episodes) {
-			end = len(episodes)
-		}
+		end := min(i+episodeBatchSize, len(episodes))
 		if err := s.upsertEpisodeBatch(ctx, username, episodes[i:end], timestamp); err != nil {
 			return err
 		}

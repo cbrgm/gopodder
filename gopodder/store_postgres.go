@@ -592,10 +592,7 @@ func (s *PostgresStore) GetEpisodes(ctx context.Context, params EpisodeQuery) ([
 
 func (s *PostgresStore) UpdateEpisodes(ctx context.Context, username string, episodes []Episode, timestamp int64) error {
 	for i := 0; i < len(episodes); i += episodeBatchSize {
-		end := i + episodeBatchSize
-		if end > len(episodes) {
-			end = len(episodes)
-		}
+		end := min(i+episodeBatchSize, len(episodes))
 		if err := s.upsertEpisodeBatch(ctx, username, episodes[i:end], timestamp); err != nil {
 			return err
 		}
