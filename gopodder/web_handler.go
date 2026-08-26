@@ -11,10 +11,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"uuid"
 
 	"github.com/cbrgm/gopodder/gopodder/web"
 	"github.com/dustin/go-humanize"
-	"github.com/google/uuid"
 )
 
 const (

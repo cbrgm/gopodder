@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strconv"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
