@@ -1,6 +1,7 @@
 package gopodder
 
 import (
+	"cmp"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -40,10 +41,7 @@ func csrfProtect(next http.Handler) http.Handler {
 				return
 			}
 
-			token := r.FormValue("csrf_token")
-			if token == "" {
-				token = r.Header.Get("X-CSRF-Token")
-			}
+			token := cmp.Or(r.FormValue("csrf_token"), r.Header.Get("X-CSRF-Token"))
 			if !validCSRFToken(token, cookie.Value) {
 				http.Error(w, "invalid csrf token", http.StatusForbidden)
 				return
