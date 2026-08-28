@@ -1,9 +1,12 @@
 package gopodder
 
 import (
+	"cmp"
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"fmt"
+	"strconv"
 	"time"
 )
 
@@ -142,4 +145,30 @@ func diffSubscriptions(existing, desired []string) (add, remove []string) {
 		}
 	}
 	return add, remove
+}
+
+// settingInt reads a numeric setting, returning 0 when it is unset or unparsable.
+func settingInt(ctx context.Context, store Store, key string) int64 {
+	val, err := store.GetSetting(ctx, key)
+	if err != nil {
+		return 0
+	}
+	n, _ := strconv.ParseInt(val, 10, 64)
+	return n
+}
+
+func minPasswordLength(ctx context.Context, store Store) int64 {
+	return cmp.Or(settingInt(ctx, store, SettingMinPasswordLength), 8)
+}
+
+func userLimitReached(ctx context.Context, store Store, accountID string) bool {
+	limit := settingInt(ctx, store, SettingMaxUsersPerAccount)
+	if limit <= 0 {
+		return false
+	}
+	users, err := store.ListUsersByAccount(ctx, accountID)
+	if err != nil {
+		return false
+	}
+	return int64(len(users)) >= limit
 }

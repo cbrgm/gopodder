@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"context"
 	"net/http"
-	"strconv"
 	"time"
 	"uuid"
 
@@ -54,9 +53,7 @@ func (a *API) apiSessionExpired(ctx context.Context, sessionCreated *time.Time) 
 	if sessionCreated == nil {
 		return true
 	}
-	val, _ := a.store.GetSetting(ctx, SettingSessionMaxAge)
-	hours, _ := strconv.ParseInt(val, 10, 64)
-	hours = cmp.Or(hours, defaultSessionMaxAgeHours)
+	hours := cmp.Or(settingInt(ctx, a.store, SettingSessionMaxAge), defaultSessionMaxAgeHours)
 	return time.Since(*sessionCreated) > time.Duration(hours)*time.Hour
 }
 
@@ -89,17 +86,14 @@ func (a *API) handleLogin(w http.ResponseWriter, r *http.Request) {
 	sessionID := uuid.New().String()
 	_ = a.store.UpdateUserSession(r.Context(), username, &sessionID, time.Now())
 
-	maxAge, _ := a.store.GetSetting(r.Context(), SettingSessionMaxAge)
-	maxAgeHours, _ := strconv.ParseInt(maxAge, 10, 64)
-	maxAgeHours = cmp.Or(maxAgeHours, defaultSessionMaxAgeHours)
+	maxAgeHours := cmp.Or(settingInt(r.Context(), a.store, SettingSessionMaxAge), defaultSessionMaxAgeHours)
 
-	secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
 	http.SetCookie(w, &http.Cookie{
 		Name:     "sessionid",
 		Value:    sessionID,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   secure,
+		Secure:   isHTTPS(r),
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   int(maxAgeHours) * 3600,
 	})

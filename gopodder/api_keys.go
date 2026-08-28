@@ -1,7 +1,6 @@
 package gopodder
 
 import (
-	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -9,7 +8,6 @@ import (
 	"encoding/xml"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 	"uuid"
@@ -78,11 +76,11 @@ func (a *API) withAPIKey(requiredRole string, next http.HandlerFunc) http.Handle
 	return func(w http.ResponseWriter, r *http.Request) {
 		acct, key, ok := a.authenticateAPIKey(r)
 		if !ok {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
 		if requiredRole == RoleAdmin && key.Role != RoleAdmin {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+			writeJSONError(w, http.StatusForbidden, "forbidden")
 			return
 		}
 		ctx := context.WithValue(r.Context(), contextKeyAPIAccount, acct)
@@ -98,29 +96,29 @@ func (a *API) requireOwnedUser(w http.ResponseWriter, r *http.Request) (string, 
 
 	user, err := a.store.GetUser(r.Context(), username)
 	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "user not found"})
+		writeJSONError(w, http.StatusNotFound, "user not found")
 		return "", false
 	}
 	if user.AccountID != acct.ID {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "user does not belong to your account"})
+		writeJSONError(w, http.StatusForbidden, "user does not belong to your account")
 		return "", false
 	}
 	return username, true
 }
 
 func (a *API) registerAPIv1Routes(mux *http.ServeMux) {
-	mux.HandleFunc(fmt.Sprintf("GET %s/users", apiV1Prefix), a.withAPIKey(RoleStandard, a.handleAPIListUsers))
-	mux.HandleFunc(fmt.Sprintf("POST %s/users", apiV1Prefix), a.withAPIKey(RoleStandard, a.handleAPICreateUser))
-	mux.HandleFunc(fmt.Sprintf("DELETE %s/users/{username}", apiV1Prefix), a.withAPIKey(RoleStandard, a.handleAPIDeleteUser))
-	mux.HandleFunc(fmt.Sprintf("GET %s/users/{username}/devices", apiV1Prefix), a.withAPIKey(RoleStandard, a.handleAPIListDevices))
-	mux.HandleFunc(fmt.Sprintf("GET %s/users/{username}/subscriptions", apiV1Prefix), a.withAPIKey(RoleStandard, a.handleAPIGetSubscriptions))
-	mux.HandleFunc(fmt.Sprintf("GET %s/users/{username}/subscriptions.opml", apiV1Prefix), a.withAPIKey(RoleStandard, a.handleAPIGetSubscriptionsOPML))
-	mux.HandleFunc(fmt.Sprintf("POST %s/users/{username}/subscriptions", apiV1Prefix), a.withAPIKey(RoleStandard, a.handleAPIUpdateSubscriptions))
+	mux.HandleFunc("GET /api/v1/users", a.withAPIKey(RoleStandard, a.handleAPIListUsers))
+	mux.HandleFunc("POST /api/v1/users", a.withAPIKey(RoleStandard, a.handleAPICreateUser))
+	mux.HandleFunc("DELETE /api/v1/users/{username}", a.withAPIKey(RoleStandard, a.handleAPIDeleteUser))
+	mux.HandleFunc("GET /api/v1/users/{username}/devices", a.withAPIKey(RoleStandard, a.handleAPIListDevices))
+	mux.HandleFunc("GET /api/v1/users/{username}/subscriptions", a.withAPIKey(RoleStandard, a.handleAPIGetSubscriptions))
+	mux.HandleFunc("GET /api/v1/users/{username}/subscriptions.opml", a.withAPIKey(RoleStandard, a.handleAPIGetSubscriptionsOPML))
+	mux.HandleFunc("POST /api/v1/users/{username}/subscriptions", a.withAPIKey(RoleStandard, a.handleAPIUpdateSubscriptions))
 
-	mux.HandleFunc(fmt.Sprintf("GET %s/accounts", apiV1Prefix), a.withAPIKey(RoleAdmin, a.handleAPIListAccounts))
-	mux.HandleFunc(fmt.Sprintf("POST %s/accounts", apiV1Prefix), a.withAPIKey(RoleAdmin, a.handleAPICreateAccount))
-	mux.HandleFunc(fmt.Sprintf("DELETE %s/accounts/{id}", apiV1Prefix), a.withAPIKey(RoleAdmin, a.handleAPIDeleteAccount))
-	mux.HandleFunc(fmt.Sprintf("GET %s/accounts/{id}/users", apiV1Prefix), a.withAPIKey(RoleAdmin, a.handleAPIListAccountUsers))
+	mux.HandleFunc("GET /api/v1/accounts", a.withAPIKey(RoleAdmin, a.handleAPIListAccounts))
+	mux.HandleFunc("POST /api/v1/accounts", a.withAPIKey(RoleAdmin, a.handleAPICreateAccount))
+	mux.HandleFunc("DELETE /api/v1/accounts/{id}", a.withAPIKey(RoleAdmin, a.handleAPIDeleteAccount))
+	mux.HandleFunc("GET /api/v1/accounts/{id}/users", a.withAPIKey(RoleAdmin, a.handleAPIListAccountUsers))
 }
 
 // Standard key handlers
@@ -147,7 +145,7 @@ func (a *API) handleAPIListUsers(w http.ResponseWriter, r *http.Request) {
 	users, err := a.store.ListUsersByAccount(r.Context(), acct.ID)
 	if err != nil {
 		a.logger.Error("failed to list users", "err", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	writeJSON(w, http.StatusOK, usersToResponse(users))
@@ -161,42 +159,42 @@ func (a *API) handleAPICreateUser(w http.ResponseWriter, r *http.Request) {
 		Password string `json:"password"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	if req.Username == "" || req.Password == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "username and password are required"})
+		writeJSONError(w, http.StatusBadRequest, "username and password are required")
 		return
 	}
 	if !isValidUsername(req.Username) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid username"})
+		writeJSONError(w, http.StatusBadRequest, "invalid username")
 		return
 	}
 	if msg := a.checkPasswordLength(r.Context(), req.Password); msg != "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
+		writeJSONError(w, http.StatusBadRequest, msg)
 		return
 	}
 	if !a.userCreationAllowed(r.Context(), acct) {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "user creation is disabled"})
+		writeJSONError(w, http.StatusForbidden, "user creation is disabled")
 		return
 	}
-	if a.userLimitReached(r.Context(), acct.ID) {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "user limit reached for this account"})
+	if userLimitReached(r.Context(), a.store, acct.ID) {
+		writeJSONError(w, http.StatusForbidden, "user limit reached for this account")
 		return
 	}
 	if _, err := a.store.GetUser(r.Context(), req.Username); err == nil {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "username already exists"})
+		writeJSONError(w, http.StatusConflict, "username already exists")
 		return
 	}
 	pwhash, err := hashPassword(req.Password)
 	if err != nil {
 		a.logger.Error("failed to hash password", "err", err, "username", req.Username)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create user"})
+		writeJSONError(w, http.StatusInternalServerError, "failed to create user")
 		return
 	}
 	if err := a.store.CreateUser(r.Context(), req.Username, pwhash, acct.ID); err != nil {
 		a.logger.Error("failed to create user", "err", err, "username", req.Username)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create user"})
+		writeJSONError(w, http.StatusInternalServerError, "failed to create user")
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]string{"username": req.Username})
@@ -214,9 +212,7 @@ func (a *API) userCreationAllowed(ctx context.Context, acct *Account) bool {
 }
 
 func (a *API) checkPasswordLength(ctx context.Context, password string) string {
-	val, _ := a.store.GetSetting(ctx, SettingMinPasswordLength)
-	minLen, _ := strconv.ParseInt(val, 10, 64)
-	minLen = cmp.Or(minLen, 8)
+	minLen := minPasswordLength(ctx, a.store)
 	if int64(len(password)) < minLen {
 		return fmt.Sprintf("password must be at least %d characters", minLen)
 	}
@@ -224,19 +220,6 @@ func (a *API) checkPasswordLength(ctx context.Context, password string) string {
 		return fmt.Sprintf("password must be at most %d bytes long", maxPasswordBytes)
 	}
 	return ""
-}
-
-func (a *API) userLimitReached(ctx context.Context, accountID string) bool {
-	val, _ := a.store.GetSetting(ctx, SettingMaxUsersPerAccount)
-	limit, _ := strconv.ParseInt(val, 10, 64)
-	if limit <= 0 {
-		return false
-	}
-	users, err := a.store.ListUsersByAccount(ctx, accountID)
-	if err != nil {
-		return false
-	}
-	return int64(len(users)) >= limit
 }
 
 func (a *API) handleAPIDeleteUser(w http.ResponseWriter, r *http.Request) {
@@ -264,7 +247,7 @@ func (a *API) handleAPIListDevices(w http.ResponseWriter, r *http.Request) {
 	devices, err := a.store.ListDevices(r.Context(), username)
 	if err != nil {
 		a.logger.Error("failed to list devices", "err", err, "username", username)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	subs, _ := a.store.GetSubscriptions(r.Context(), username)
@@ -294,7 +277,7 @@ func (a *API) handleAPIGetSubscriptions(w http.ResponseWriter, r *http.Request) 
 	subs, err := a.store.GetSubscriptions(r.Context(), username)
 	if err != nil {
 		a.logger.Error("failed to get subscriptions", "err", err, "username", username)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	if subs == nil {
@@ -311,7 +294,7 @@ func (a *API) handleAPIGetSubscriptionsOPML(w http.ResponseWriter, r *http.Reque
 	subs, err := a.store.GetSubscriptions(r.Context(), username)
 	if err != nil {
 		a.logger.Error("failed to get subscriptions", "err", err, "username", username)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
@@ -343,7 +326,7 @@ func (a *API) handleAPIUpdateSubscriptions(w http.ResponseWriter, r *http.Reques
 		Remove []string `json:"remove"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
@@ -351,7 +334,7 @@ func (a *API) handleAPIUpdateSubscriptions(w http.ResponseWriter, r *http.Reques
 	req.Remove = filterValidURLs(req.Remove)
 
 	if hasOverlap(req.Add, req.Remove) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "same URL in add and remove"})
+		writeJSONError(w, http.StatusBadRequest, "same URL in add and remove")
 		return
 	}
 
@@ -361,7 +344,7 @@ func (a *API) handleAPIUpdateSubscriptions(w http.ResponseWriter, r *http.Reques
 	}
 	if err := a.store.UpdateSubscriptions(r.Context(), username, req.Add, req.Remove, now); err != nil {
 		a.logger.Error("failed to update subscriptions", "err", err, "username", username)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update subscriptions"})
+		writeJSONError(w, http.StatusInternalServerError, "failed to update subscriptions")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"timestamp": now})
@@ -373,7 +356,7 @@ func (a *API) handleAPIListAccounts(w http.ResponseWriter, r *http.Request) {
 	accounts, err := a.store.ListAccounts(r.Context())
 	if err != nil {
 		a.logger.Error("failed to list accounts", "err", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	type acctResp struct {
@@ -410,19 +393,19 @@ func (a *API) handleAPICreateAccount(w http.ResponseWriter, r *http.Request) {
 		Role     string `json:"role"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	if req.Username == "" || req.Password == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "username and password are required"})
+		writeJSONError(w, http.StatusBadRequest, "username and password are required")
 		return
 	}
 	if !isValidUsername(req.Username) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid username"})
+		writeJSONError(w, http.StatusBadRequest, "invalid username")
 		return
 	}
 	if msg := a.checkPasswordLength(r.Context(), req.Password); msg != "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
+		writeJSONError(w, http.StatusBadRequest, msg)
 		return
 	}
 	if req.Role != RoleAdmin {
@@ -430,19 +413,19 @@ func (a *API) handleAPICreateAccount(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := a.store.GetAccount(r.Context(), req.Username); err == nil {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "account already exists"})
+		writeJSONError(w, http.StatusConflict, "account already exists")
 		return
 	}
 	pwhash, err := hashPassword(req.Password)
 	if err != nil {
 		a.logger.Error("failed to hash password", "err", err, "username", req.Username)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create account"})
+		writeJSONError(w, http.StatusInternalServerError, "failed to create account")
 		return
 	}
 	id := uuid.New().String()
 	if err := a.store.CreateAccount(r.Context(), id, req.Username, pwhash, req.Role, time.Now()); err != nil {
 		a.logger.Error("failed to create account", "err", err, "username", req.Username)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create account"})
+		writeJSONError(w, http.StatusInternalServerError, "failed to create account")
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]string{"id": id, "username": req.Username, "role": req.Role})
@@ -452,11 +435,11 @@ func (a *API) handleAPIDeleteAccount(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	acct, err := a.store.GetAccountByID(r.Context(), id)
 	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "account not found"})
+		writeJSONError(w, http.StatusNotFound, "account not found")
 		return
 	}
 	if acct.Role == RoleAdmin {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "cannot delete admin accounts via API"})
+		writeJSONError(w, http.StatusBadRequest, "cannot delete admin accounts via API")
 		return
 	}
 	deleteAccountCascade(r.Context(), a.store, id)
@@ -466,13 +449,13 @@ func (a *API) handleAPIDeleteAccount(w http.ResponseWriter, r *http.Request) {
 func (a *API) handleAPIListAccountUsers(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if _, err := a.store.GetAccountByID(r.Context(), id); err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "account not found"})
+		writeJSONError(w, http.StatusNotFound, "account not found")
 		return
 	}
 	users, err := a.store.ListUsersByAccount(r.Context(), id)
 	if err != nil {
 		a.logger.Error("failed to list account users", "err", err, "account_id", id)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	writeJSON(w, http.StatusOK, usersToResponse(users))
