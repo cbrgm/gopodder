@@ -1228,6 +1228,28 @@ type opmlOutline struct {
 	Outlines []opmlOutline `xml:"outline"`
 }
 
+// writeOPML renders a subscription list as an OPML 2.0 document.
+func writeOPML(w http.ResponseWriter, title string, subs []string) {
+	outlines := make([]opmlOutline, 0, len(subs))
+	for _, u := range subs {
+		outlines = append(outlines, opmlOutline{Type: "rss", Text: u, Title: u, XMLURL: u})
+	}
+	doc := opmlDoc{
+		Version: "2.0",
+		Head: opmlHead{
+			Title:       title,
+			DateCreated: time.Now().UTC().Format(time.RFC1123Z),
+		},
+		Body: opmlBody{Outlines: outlines},
+	}
+
+	w.Header().Set("Content-Type", "text/x-opml+xml")
+	_, _ = w.Write([]byte(xml.Header))
+	enc := xml.NewEncoder(w)
+	enc.Indent("", "  ")
+	_ = enc.Encode(doc)
+}
+
 func (h *WebHandler) handleOPML(w http.ResponseWriter, r *http.Request) {
 	acct := webAccountFromContext(r.Context())
 	username := r.URL.Query().Get("user")
@@ -1248,28 +1270,8 @@ func (h *WebHandler) handleOPML(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	outlines := make([]opmlOutline, 0, len(subs))
-	for _, u := range subs {
-		outlines = append(outlines, opmlOutline{Type: "rss", Text: u, Title: u, XMLURL: u})
-	}
-
-	doc := opmlDoc{
-		Version: "2.0",
-		Head: opmlHead{
-			Title:       fmt.Sprintf("goPodder subscriptions for %s", username),
-			DateCreated: time.Now().UTC().Format(time.RFC1123Z),
-		},
-		Body: opmlBody{Outlines: outlines},
-	}
-
-	filename := fmt.Sprintf("%s-subscriptions.opml", username)
-
-	w.Header().Set("Content-Type", "text/x-opml+xml")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
-	_, _ = w.Write([]byte(xml.Header))
-	enc := xml.NewEncoder(w)
-	enc.Indent("", "  ")
-	_ = enc.Encode(doc)
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s-subscriptions.opml"`, username))
+	writeOPML(w, fmt.Sprintf("goPodder subscriptions for %s", username), subs)
 }
 
 func (h *WebHandler) parseOPMLUpload(r *http.Request) ([]string, error) {
@@ -1364,25 +1366,7 @@ func (h *WebHandler) handlePublicOPML(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	outlines := make([]opmlOutline, 0, len(subs))
-	for _, u := range subs {
-		outlines = append(outlines, opmlOutline{Type: "rss", Text: u, Title: u, XMLURL: u})
-	}
-
-	doc := opmlDoc{
-		Version: "2.0",
-		Head: opmlHead{
-			Title:       fmt.Sprintf("goPodder subscriptions for %s", username),
-			DateCreated: time.Now().UTC().Format(time.RFC1123Z),
-		},
-		Body: opmlBody{Outlines: outlines},
-	}
-
-	w.Header().Set("Content-Type", "text/x-opml+xml")
-	_, _ = w.Write([]byte(xml.Header))
-	enc := xml.NewEncoder(w)
-	enc.Indent("", "  ")
-	_ = enc.Encode(doc)
+	writeOPML(w, fmt.Sprintf("goPodder subscriptions for %s", username), subs)
 }
 
 func (h *WebHandler) handlePublicRSS(w http.ResponseWriter, r *http.Request) {

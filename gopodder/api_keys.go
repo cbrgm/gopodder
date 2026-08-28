@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"encoding/xml"
 	"fmt"
 	"net/http"
 	"strings"
@@ -298,21 +297,7 @@ func (a *API) handleAPIGetSubscriptionsOPML(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	outlines := make([]opmlOutline, 0, len(subs))
-	for _, u := range subs {
-		outlines = append(outlines, opmlOutline{Type: "rss", Text: u, Title: u, XMLURL: u})
-	}
-	doc := opmlDoc{
-		Version: "2.0",
-		Head:    opmlHead{Title: fmt.Sprintf("goPodder subscriptions for %s", username)},
-		Body:    opmlBody{Outlines: outlines},
-	}
-
-	w.Header().Set("Content-Type", "text/x-opml+xml")
-	_, _ = w.Write([]byte(xml.Header))
-	enc := xml.NewEncoder(w)
-	enc.Indent("", "  ")
-	_ = enc.Encode(doc)
+	writeOPML(w, fmt.Sprintf("goPodder subscriptions for %s", username), subs)
 }
 
 func (a *API) handleAPIUpdateSubscriptions(w http.ResponseWriter, r *http.Request) {
