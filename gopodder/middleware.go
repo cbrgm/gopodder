@@ -2,6 +2,7 @@ package gopodder
 
 import (
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -56,22 +57,20 @@ func (rw *responseWriter) WriteHeader(code int) {
 }
 
 func metricsPath(path string) string {
-	if len(path) >= 7 && path[:7] == "/api/v1" {
-		return "/api/v1"
+	if strings.HasPrefix(path, apiV1Prefix) {
+		return apiV1Prefix
 	}
 	if hasAPIPrefix(path) {
 		return "/api/v2"
 	}
-	if len(path) > 1 && path[0] == '/' {
-		for i := 1; i < len(path); i++ {
-			if path[i] == '/' {
-				return path[:i]
-			}
+	if rest, ok := strings.CutPrefix(path, "/"); ok {
+		if segment, _, found := strings.Cut(rest, "/"); found {
+			return "/" + segment
 		}
 	}
 	return path
 }
 
 func hasAPIPrefix(path string) bool {
-	return len(path) >= 5 && path[:5] == "/api/"
+	return strings.HasPrefix(path, "/api/")
 }

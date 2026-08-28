@@ -150,7 +150,7 @@ func cleanupInactiveAccounts(logger *slog.Logger, store Store) {
 	}
 }
 
-func getClampedSetting(store Store, key string, defaultVal, min, max int) int {
+func getClampedSetting(store Store, key string, defaultVal, lo, hi int) int {
 	val, err := store.GetSetting(context.Background(), key)
 	if err != nil {
 		return defaultVal
@@ -159,13 +159,7 @@ func getClampedSetting(store Store, key string, defaultVal, min, max int) int {
 	if n == 0 {
 		return 0
 	}
-	if n < min {
-		return min
-	}
-	if n > max {
-		return max
-	}
-	return n
+	return min(max(n, lo), hi)
 }
 
 func openStore(cfg Config) (Store, error) {

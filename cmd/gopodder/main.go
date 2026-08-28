@@ -138,17 +138,10 @@ func setupLogger(level string) *slog.Logger {
 	return slog.New(handler)
 }
 
+// stringToLogLevel parses a level name, falling back to info for anything
+// slog does not recognize (the zero Level is info).
 func stringToLogLevel(level string) slog.Level {
-	switch strings.ToLower(level) {
-	case "debug":
-		return slog.LevelDebug
-	case "info":
-		return slog.LevelInfo
-	case "warn":
-		return slog.LevelWarn
-	case "error":
-		return slog.LevelError
-	default:
-		return slog.LevelInfo
-	}
+	var l slog.Level
+	_ = l.UnmarshalText([]byte(level))
+	return l
 }
