@@ -213,11 +213,26 @@ func TestRun_StartsAndShutdown(t *testing.T) {
 		})
 	}()
 
-	time.Sleep(100 * time.Millisecond)
-
-	resp, err := http.Get("http://127.0.0.1:19876/api/2/devices/test.json")
-	if err != nil {
-		t.Fatalf("failed to connect to server: %v", err)
+	// Poll for the listener instead of guessing how long startup takes, and
+	// check errCh on the way so a startup failure is reported as itself
+	// rather than as a connection error.
+	var resp *http.Response
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		var err error
+		resp, err = http.Get("http://127.0.0.1:19876/api/2/devices/test.json")
+		if err == nil {
+			break
+		}
+		select {
+		case runErr := <-errCh:
+			t.Fatalf("Run returned before the server came up: %v", runErr)
+		default:
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("server did not come up within 10s: %v", err)
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized {
