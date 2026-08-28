@@ -3,15 +3,12 @@ package gopodder
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 )
-
-const apiPrefix = "/api/2"
 
 type BuildInfo struct {
 	Version   string
@@ -53,16 +50,16 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("GET /clientconfig.json", a.handleClientConfig)
 
 	// gPodder API v2 routes
-	mux.HandleFunc(fmt.Sprintf("POST %s/auth/{username...}", apiPrefix), a.routeAuth)
-	mux.HandleFunc(fmt.Sprintf("GET %s/devices/{username...}", apiPrefix), a.withAuth(a.handleListDevices))
-	mux.HandleFunc(fmt.Sprintf("POST %s/devices/{rest...}", apiPrefix), a.withAuth(a.handleUpdateDevice))
-	mux.HandleFunc(fmt.Sprintf("GET %s/subscriptions/{rest...}", apiPrefix), a.withAuth(a.handleGetSubscriptionChanges))
-	mux.HandleFunc(fmt.Sprintf("POST %s/subscriptions/{rest...}", apiPrefix), a.withAuth(a.handleUploadSubscriptionChanges))
+	mux.HandleFunc("POST /api/2/auth/{username...}", a.routeAuth)
+	mux.HandleFunc("GET /api/2/devices/{username...}", a.withAuth(a.handleListDevices))
+	mux.HandleFunc("POST /api/2/devices/{rest...}", a.withAuth(a.handleUpdateDevice))
+	mux.HandleFunc("GET /api/2/subscriptions/{rest...}", a.withAuth(a.handleGetSubscriptionChanges))
+	mux.HandleFunc("POST /api/2/subscriptions/{rest...}", a.withAuth(a.handleUploadSubscriptionChanges))
 	mux.HandleFunc("GET /subscriptions/{rest...}", a.withAuth(a.routeGetSubscriptions))
 	mux.HandleFunc("PUT /subscriptions/{rest...}", a.withAuth(a.handleUploadSubscriptions))
-	mux.HandleFunc(fmt.Sprintf("PUT %s/subscriptions/{rest...}", apiPrefix), a.withAuth(a.handleUploadSubscriptions))
-	mux.HandleFunc(fmt.Sprintf("GET %s/episodes/{username...}", apiPrefix), a.withAuth(a.handleGetEpisodes))
-	mux.HandleFunc(fmt.Sprintf("POST %s/episodes/{username...}", apiPrefix), a.withAuth(a.handleUploadEpisodes))
+	mux.HandleFunc("PUT /api/2/subscriptions/{rest...}", a.withAuth(a.handleUploadSubscriptions))
+	mux.HandleFunc("GET /api/2/episodes/{username...}", a.withAuth(a.handleGetEpisodes))
+	mux.HandleFunc("POST /api/2/episodes/{username...}", a.withAuth(a.handleUploadEpisodes))
 
 	// Stub endpoints for directory/discovery features (gPodder desktop compatibility)
 	mux.HandleFunc("GET /toplist/opml", a.handleEmptyOPML)
@@ -93,11 +90,7 @@ func (a *API) handleHealthz(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) handleClientConfig(w http.ResponseWriter, r *http.Request) {
-	scheme := "http"
-	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
-		scheme = "https"
-	}
-	base := scheme + "://" + r.Host
+	base := requestBaseURL(r)
 
 	resp := map[string]string{
 		"mygpo":             base + "/api/2",
@@ -182,10 +175,27 @@ func parseDevicePath(r *http.Request) (deviceID string, ok bool) {
 	return stripExtension(parts[1]), true
 }
 
+// isHTTPS reports whether the request reached us over TLS, directly or via a
+// terminating proxy.
+func isHTTPS(r *http.Request) bool {
+	return r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
+}
+
+func requestBaseURL(r *http.Request) string {
+	if isHTTPS(r) {
+		return "https://" + r.Host
+	}
+	return "http://" + r.Host
+}
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+func writeJSONError(w http.ResponseWriter, status int, msg string) {
+	writeJSON(w, status, map[string]string{"error": msg})
 }
 
 func parseQueryInt64(r *http.Request, key string, def int64) int64 {

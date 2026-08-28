@@ -3,7 +3,6 @@ package gopodder
 import (
 	"context"
 	"encoding/json"
-	"encoding/xml"
 	"fmt"
 	"net/http"
 	"slices"
@@ -46,7 +45,7 @@ func (a *API) handleGetAllSubscriptions(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if strings.HasSuffix(r.URL.Path, ".opml") {
-		a.writeSubscriptionsOPML(w, username, subs)
+		writeOPML(w, fmt.Sprintf("%s subscriptions", username), subs)
 		return
 	}
 
@@ -195,24 +194,6 @@ func (a *API) handleUploadSubscriptionChanges(w http.ResponseWriter, r *http.Req
 		Timestamp:  now + 1,
 		UpdateURLs: [][]string{},
 	})
-}
-
-func (a *API) writeSubscriptionsOPML(w http.ResponseWriter, username string, subs []string) {
-	outlines := make([]opmlOutline, 0, len(subs))
-	for _, u := range subs {
-		outlines = append(outlines, opmlOutline{Type: "rss", Text: u, Title: u, XMLURL: u})
-	}
-	doc := opmlDoc{
-		Version: "2.0",
-		Head:    opmlHead{Title: fmt.Sprintf("%s subscriptions", username)},
-		Body:    opmlBody{Outlines: outlines},
-	}
-
-	w.Header().Set("Content-Type", "text/x-opml+xml")
-	_, _ = w.Write([]byte(xml.Header))
-	enc := xml.NewEncoder(w)
-	enc.Indent("", "  ")
-	_ = enc.Encode(doc)
 }
 
 func (a *API) warnUnmatchedRemovals(ctx context.Context, username, device string, removed []string) {

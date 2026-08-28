@@ -226,7 +226,7 @@ func (h *WebHandler) handleLoginSubmit(w http.ResponseWriter, r *http.Request) {
 		Value:    sessionID,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
+		Secure:   isHTTPS(r),
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   int(maxAge) * 3600,
 	})
@@ -389,7 +389,7 @@ func (h *WebHandler) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) 
 		Value:    raw,
 		Path:     "/account",
 		HttpOnly: true,
-		Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
+		Secure:   isHTTPS(r),
 		SameSite: http.SameSiteStrictMode,
 		MaxAge:   60,
 	})
@@ -694,11 +694,7 @@ func (h *WebHandler) buildUserDetailData(ctx context.Context, r *http.Request, a
 	var shareToken, shareOPMLURL, shareRSSURL string
 	if user != nil && user.ShareToken != nil {
 		shareToken = *user.ShareToken
-		scheme := "http"
-		if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
-			scheme = "https"
-		}
-		base := scheme + "://" + r.Host
+		base := requestBaseURL(r)
 		shareOPMLURL = base + "/user/" + username + "/subscriptions.opml?token=" + shareToken
 		shareRSSURL = base + "/user/" + username + "/subscriptions/rss?token=" + shareToken
 	}
@@ -741,7 +737,7 @@ func (h *WebHandler) handleStatusPage(w http.ResponseWriter, r *http.Request) {
 			Episodes:      stats.Episodes,
 		},
 		Uptime:     time.Since(h.startedAt).Truncate(time.Second).String(),
-		MemAlloc:   formatBytes(mem.Alloc),
+		MemAlloc:   humanize.IBytes(mem.Alloc),
 		Goroutines: runtime.NumGoroutine(),
 		Version:    h.build.Version,
 		Revision:   h.build.Revision,
@@ -1137,13 +1133,13 @@ func (h *WebHandler) handleSettingsSave(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	_ = h.store.SetSetting(ctx, SettingSelfRegistration, boolString(r.FormValue("self_registration") == "true"))
-	_ = h.store.SetSetting(ctx, SettingAllowUserCreation, boolString(r.FormValue("allow_user_creation") == "true"))
-	_ = h.store.SetSetting(ctx, SettingAllowSharing, boolString(r.FormValue("allow_sharing") == "true"))
-	_ = h.store.SetSetting(ctx, SettingAllowAPIKeys, boolString(r.FormValue("allow_api_keys") == "true"))
-	_ = h.store.SetSetting(ctx, SettingMaxUsersPerAccount, clampedIntString(r.FormValue("max_users_per_account")))
+	_ = h.store.SetSetting(ctx, SettingSelfRegistration, strconv.FormatBool(r.FormValue("self_registration") == "true"))
+	_ = h.store.SetSetting(ctx, SettingAllowUserCreation, strconv.FormatBool(r.FormValue("allow_user_creation") == "true"))
+	_ = h.store.SetSetting(ctx, SettingAllowSharing, strconv.FormatBool(r.FormValue("allow_sharing") == "true"))
+	_ = h.store.SetSetting(ctx, SettingAllowAPIKeys, strconv.FormatBool(r.FormValue("allow_api_keys") == "true"))
+	_ = h.store.SetSetting(ctx, SettingMaxUsersPerAccount, clampedMinIntString(r.FormValue("max_users_per_account"), 0))
 	_ = h.store.SetSetting(ctx, SettingMaxAPIKeys, clampedMinIntString(r.FormValue("max_api_keys_per_account"), 1))
-	_ = h.store.SetSetting(ctx, SettingMinPasswordLength, clampedIntString(r.FormValue("min_password_length")))
+	_ = h.store.SetSetting(ctx, SettingMinPasswordLength, clampedMinIntString(r.FormValue("min_password_length"), 0))
 	_ = h.store.SetSetting(ctx, SettingSessionMaxAge, strconv.Itoa(sessionMaxAge))
 	_ = h.store.SetSetting(ctx, SettingEpisodeRetention, strconv.Itoa(episodeRetention))
 	_ = h.store.SetSetting(ctx, SettingInactiveAccountDays, strconv.Itoa(inactiveAccountDays))
@@ -1173,16 +1169,11 @@ func (h *WebHandler) isSettingEnabled(ctx context.Context, key string) bool {
 }
 
 func (h *WebHandler) getSettingInt(ctx context.Context, key string) int64 {
-	val, err := h.store.GetSetting(ctx, key)
-	if err != nil {
-		return 0
-	}
-	n, _ := strconv.ParseInt(val, 10, 64)
-	return n
+	return settingInt(ctx, h.store, key)
 }
 
 func (h *WebHandler) checkPasswordLength(ctx context.Context, password string) string {
-	minLen := cmp.Or(h.getSettingInt(ctx, SettingMinPasswordLength), 8)
+	minLen := minPasswordLength(ctx, h.store)
 	if int64(len(password)) < minLen {
 		return fmt.Sprintf("Password must be at least %d characters.", minLen)
 	}
@@ -1208,15 +1199,7 @@ func (h *WebHandler) hashNewPassword(ctx context.Context, password string) (hash
 }
 
 func (h *WebHandler) userLimitReached(ctx context.Context, accountID string) bool {
-	limit := h.getSettingInt(ctx, SettingMaxUsersPerAccount)
-	if limit <= 0 {
-		return false
-	}
-	users, err := h.store.ListUsersByAccount(ctx, accountID)
-	if err != nil {
-		return false
-	}
-	return int64(len(users)) >= limit
+	return userLimitReached(ctx, h.store, accountID)
 }
 
 // OPML
@@ -1245,6 +1228,28 @@ type opmlOutline struct {
 	Outlines []opmlOutline `xml:"outline"`
 }
 
+// writeOPML renders a subscription list as an OPML 2.0 document.
+func writeOPML(w http.ResponseWriter, title string, subs []string) {
+	outlines := make([]opmlOutline, 0, len(subs))
+	for _, u := range subs {
+		outlines = append(outlines, opmlOutline{Type: "rss", Text: u, Title: u, XMLURL: u})
+	}
+	doc := opmlDoc{
+		Version: "2.0",
+		Head: opmlHead{
+			Title:       title,
+			DateCreated: time.Now().UTC().Format(time.RFC1123Z),
+		},
+		Body: opmlBody{Outlines: outlines},
+	}
+
+	w.Header().Set("Content-Type", "text/x-opml+xml")
+	_, _ = w.Write([]byte(xml.Header))
+	enc := xml.NewEncoder(w)
+	enc.Indent("", "  ")
+	_ = enc.Encode(doc)
+}
+
 func (h *WebHandler) handleOPML(w http.ResponseWriter, r *http.Request) {
 	acct := webAccountFromContext(r.Context())
 	username := r.URL.Query().Get("user")
@@ -1265,28 +1270,8 @@ func (h *WebHandler) handleOPML(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	outlines := make([]opmlOutline, 0, len(subs))
-	for _, u := range subs {
-		outlines = append(outlines, opmlOutline{Type: "rss", Text: u, Title: u, XMLURL: u})
-	}
-
-	doc := opmlDoc{
-		Version: "2.0",
-		Head: opmlHead{
-			Title:       fmt.Sprintf("goPodder subscriptions for %s", username),
-			DateCreated: time.Now().UTC().Format(time.RFC1123Z),
-		},
-		Body: opmlBody{Outlines: outlines},
-	}
-
-	filename := fmt.Sprintf("%s-subscriptions.opml", username)
-
-	w.Header().Set("Content-Type", "text/x-opml+xml")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
-	_, _ = w.Write([]byte(xml.Header))
-	enc := xml.NewEncoder(w)
-	enc.Indent("", "  ")
-	_ = enc.Encode(doc)
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s-subscriptions.opml"`, username))
+	writeOPML(w, fmt.Sprintf("goPodder subscriptions for %s", username), subs)
 }
 
 func (h *WebHandler) parseOPMLUpload(r *http.Request) ([]string, error) {
@@ -1381,25 +1366,7 @@ func (h *WebHandler) handlePublicOPML(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	outlines := make([]opmlOutline, 0, len(subs))
-	for _, u := range subs {
-		outlines = append(outlines, opmlOutline{Type: "rss", Text: u, Title: u, XMLURL: u})
-	}
-
-	doc := opmlDoc{
-		Version: "2.0",
-		Head: opmlHead{
-			Title:       fmt.Sprintf("goPodder subscriptions for %s", username),
-			DateCreated: time.Now().UTC().Format(time.RFC1123Z),
-		},
-		Body: opmlBody{Outlines: outlines},
-	}
-
-	w.Header().Set("Content-Type", "text/x-opml+xml")
-	_, _ = w.Write([]byte(xml.Header))
-	enc := xml.NewEncoder(w)
-	enc.Indent("", "  ")
-	_ = enc.Encode(doc)
+	writeOPML(w, fmt.Sprintf("goPodder subscriptions for %s", username), subs)
 }
 
 func (h *WebHandler) handlePublicRSS(w http.ResponseWriter, r *http.Request) {
@@ -1540,40 +1507,9 @@ func (h *WebHandler) isLastAdmin(ctx context.Context, id string) bool {
 	return true
 }
 
-func boolString(v bool) string {
-	if v {
-		return "true"
-	}
-	return "false"
-}
-
-func clampedIntString(s string) string {
-	n, _ := strconv.ParseInt(s, 10, 64)
-	if n < 0 {
-		n = 0
-	}
-	return strconv.FormatInt(n, 10)
-}
-
 func clampedMinIntString(s string, minVal int64) string {
 	n, _ := strconv.ParseInt(s, 10, 64)
-	if n < minVal {
-		n = minVal
-	}
-	return strconv.FormatInt(n, 10)
-}
-
-func formatBytes(b uint64) string {
-	const unit = 1024
-	if b < unit {
-		return fmt.Sprintf("%d B", b)
-	}
-	div, exp := uint64(unit), 0
-	for n := b / unit; n >= unit; n /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f %ciB", float64(b)/float64(div), "KMGTPE"[exp])
+	return strconv.FormatInt(max(n, minVal), 10)
 }
 
 func formatTimestamp(t time.Time) string {

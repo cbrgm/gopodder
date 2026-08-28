@@ -3,6 +3,7 @@ package gopodder
 import (
 	"net/url"
 	"regexp"
+	"slices"
 )
 
 var validIdentifier = regexp.MustCompile(`^[a-zA-Z0-9._-]{1,64}$`)
@@ -23,11 +24,5 @@ func isValidFeedURL(s string) bool {
 }
 
 func filterValidURLs(urls []string) []string {
-	valid := urls[:0]
-	for _, u := range urls {
-		if isValidFeedURL(u) {
-			valid = append(valid, u)
-		}
-	}
-	return valid
+	return slices.DeleteFunc(urls, func(u string) bool { return !isValidFeedURL(u) })
 }
