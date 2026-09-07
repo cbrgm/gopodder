@@ -1580,25 +1580,26 @@ func TestHandleCreateAPIKey_ZeroSettingUsesDefault(t *testing.T) {
 	}
 }
 
-func TestClampedMinIntString(t *testing.T) {
+func TestParseSettingInt(t *testing.T) {
 	tests := []struct {
-		input string
-		min   int64
-		want  string
+		input  string
+		want   int
+		wantOK bool
 	}{
-		{"5", 1, "5"},
-		{"0", 1, "1"},
-		{"-3", 1, "1"},
-		{"", 1, "1"},
-		{"100", 1, "100"},
-		{"abc", 1, "1"},
+		{"5", 5, true},
+		{"0", 0, true},
+		{"", 0, true},
+		{"100", 100, true},
+		{"-3", 0, false},
+		{"abc", 0, false},
+		{"1.5", 0, false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			got := clampedMinIntString(tt.input, tt.min)
-			if got != tt.want {
-				t.Errorf("clampedMinIntString(%q, %d) = %q, want %q", tt.input, tt.min, got, tt.want)
+			got, ok := parseSettingInt(tt.input)
+			if got != tt.want || ok != tt.wantOK {
+				t.Errorf("parseSettingInt(%q) = (%d, %v), want (%d, %v)", tt.input, got, ok, tt.want, tt.wantOK)
 			}
 		})
 	}

@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -218,6 +219,7 @@ func (h *WebHandler) handleLoginSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Best effort: a lost login timestamp must not fail the login itself.
 	_ = h.store.UpdateAccountLastLogin(r.Context(), acct.ID, time.Now())
 
 	maxAge := cmp.Or(h.getSettingInt(r.Context(), SettingSessionMaxAge), defaultSessionMaxAgeHours)
@@ -239,7 +241,9 @@ func (h *WebHandler) handleLogout(w http.ResponseWriter, r *http.Request) {
 	if err == nil && cookie.Value != "" {
 		acct, err := h.store.GetAccountBySession(r.Context(), cookie.Value)
 		if err == nil {
-			_ = h.store.UpdateAccountSession(r.Context(), acct.ID, nil, time.Time{})
+			if err := h.store.UpdateAccountSession(r.Context(), acct.ID, nil, time.Time{}); err != nil {
+				h.logger.Error("failed to invalidate session on logout", "username", acct.Username, "err", err)
+			}
 			h.logger.Info("account logged out", "username", acct.Username)
 		}
 	}
@@ -308,7 +312,9 @@ func (h *WebHandler) handleSelfChangeAccountPassword(w http.ResponseWriter, r *h
 		http.Redirect(w, r, "/account?error="+msg, http.StatusSeeOther)
 		return
 	}
-	_ = h.store.UpdateAccountPassword(r.Context(), acct.ID, pwhash)
+	if h.writeFailed(w, r, h.store.UpdateAccountPassword(r.Context(), acct.ID, pwhash), "UpdateAccountPassword", "/account") {
+		return
+	}
 	http.Redirect(w, r, "/account?flash=Password+updated.", http.StatusSeeOther)
 }
 
@@ -399,7 +405,9 @@ func (h *WebHandler) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) 
 func (h *WebHandler) handleDeleteAPIKey(w http.ResponseWriter, r *http.Request) {
 	acct := webAccountFromContext(r.Context())
 	id := r.PathValue("id")
-	_ = h.store.DeleteAPIKey(r.Context(), id, acct.ID)
+	if h.writeFailed(w, r, h.store.DeleteAPIKey(r.Context(), id, acct.ID), "DeleteAPIKey", "/account") {
+		return
+	}
 	http.Redirect(w, r, "/account?flash=API+key+deleted.", http.StatusSeeOther)
 }
 
@@ -517,7 +525,9 @@ func (h *WebHandler) handleSelfDeleteDevice(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	_ = h.store.DeleteDevice(r.Context(), username, r.PathValue("device"))
+	if h.writeFailed(w, r, h.store.DeleteDevice(r.Context(), username, r.PathValue("device")), "DeleteDevice", "/users/"+username) {
+		return
+	}
 	http.Redirect(w, r, "/users/"+username, http.StatusSeeOther)
 }
 
@@ -527,8 +537,8 @@ func (h *WebHandler) handleSelfDeleteSubscriptions(w http.ResponseWriter, r *htt
 		return
 	}
 	subs, _ := h.store.GetSubscriptions(r.Context(), username)
-	if len(subs) > 0 {
-		_ = h.store.UpdateSubscriptions(r.Context(), username, nil, subs, time.Now().Unix())
+	if len(subs) > 0 && h.writeFailed(w, r, h.store.UpdateSubscriptions(r.Context(), username, nil, subs, time.Now().Unix()), "UpdateSubscriptions", "/users/"+username) {
+		return
 	}
 	http.Redirect(w, r, "/users/"+username, http.StatusSeeOther)
 }
@@ -538,7 +548,9 @@ func (h *WebHandler) handleSelfDeleteSubscription(w http.ResponseWriter, r *http
 	if !ok {
 		return
 	}
-	h.deleteSubscription(r.Context(), username, r.FormValue("url"))
+	if h.writeFailed(w, r, h.deleteSubscription(r.Context(), username, r.FormValue("url")), "UpdateSubscriptions", "/users/"+username) {
+		return
+	}
 	http.Redirect(w, r, "/users/"+username, http.StatusSeeOther)
 }
 
@@ -561,9 +573,9 @@ func (h *WebHandler) handleSelfImportOPML(w http.ResponseWriter, r *http.Request
 		return
 	}
 	redirect := "/users/" + username
-	n, err := h.importOPML(r.Context(), username, r)
-	if err != nil {
-		http.Redirect(w, r, redirect+"?error=Invalid+OPML+file.", http.StatusSeeOther)
+	n, errMsg := h.importOPML(r.Context(), username, r)
+	if errMsg != "" {
+		http.Redirect(w, r, redirect+"?error="+errMsg, http.StatusSeeOther)
 		return
 	}
 	http.Redirect(w, r, redirect+"?flash=Imported+"+fmt.Sprint(n)+"+subscriptions.", http.StatusSeeOther)
@@ -611,11 +623,11 @@ func deleteAccountCascade(ctx context.Context, store Store, accountID string) {
 	_ = store.DeleteAccount(ctx, accountID)
 }
 
-func (h *WebHandler) deleteSubscription(ctx context.Context, username, url string) {
+func (h *WebHandler) deleteSubscription(ctx context.Context, username, url string) error {
 	if url == "" {
-		return
+		return nil
 	}
-	_ = h.store.UpdateSubscriptions(ctx, username, nil, []string{url}, time.Now().Unix())
+	return h.store.UpdateSubscriptions(ctx, username, nil, []string{url}, time.Now().Unix())
 }
 
 func (h *WebHandler) addSubscription(ctx context.Context, username string, r *http.Request) (errMsg string) {
@@ -627,23 +639,35 @@ func (h *WebHandler) addSubscription(ctx context.Context, username string, r *ht
 		return "Invalid+URL.+Only+http+and+https+URLs+are+allowed."
 	}
 	now := time.Now().Unix()
-	_ = h.store.ReactivateSubscription(ctx, username, url, now)
-	_ = h.store.UpdateSubscriptions(ctx, username, []string{url}, nil, now)
+	if err := h.store.ReactivateSubscription(ctx, username, url, now); err != nil {
+		h.logger.Error("store write failed", "op", "ReactivateSubscription", "err", err)
+		return webWriteErrMsg
+	}
+	if err := h.store.UpdateSubscriptions(ctx, username, []string{url}, nil, now); err != nil {
+		h.logger.Error("store write failed", "op", "UpdateSubscriptions", "err", err)
+		return webWriteErrMsg
+	}
 	return ""
 }
 
-func (h *WebHandler) importOPML(ctx context.Context, username string, r *http.Request) (int, error) {
+func (h *WebHandler) importOPML(ctx context.Context, username string, r *http.Request) (int, string) {
 	urls, err := h.parseOPMLUpload(r)
 	if err != nil {
-		return 0, err
+		return 0, "Invalid+OPML+file."
 	}
 	urls = filterValidURLs(urls)
 	now := time.Now().Unix()
 	for _, u := range urls {
-		_ = h.store.ReactivateSubscription(ctx, username, u, now)
+		if err := h.store.ReactivateSubscription(ctx, username, u, now); err != nil {
+			h.logger.Error("store write failed", "op", "ReactivateSubscription", "err", err)
+			return 0, webWriteErrMsg
+		}
 	}
-	_ = h.store.UpdateSubscriptions(ctx, username, urls, nil, now)
-	return len(urls), nil
+	if err := h.store.UpdateSubscriptions(ctx, username, urls, nil, now); err != nil {
+		h.logger.Error("store write failed", "op", "UpdateSubscriptions", "err", err)
+		return 0, webWriteErrMsg
+	}
+	return len(urls), ""
 }
 
 func (h *WebHandler) buildUsersData(ctx context.Context, accountID string) []web.UserData {
@@ -848,14 +872,18 @@ func (h *WebHandler) handleUpdateAccount(w http.ResponseWriter, r *http.Request)
 			http.Redirect(w, r, "/admin/accounts/"+id+"?error=Invalid+username.", http.StatusSeeOther)
 			return
 		}
-		_ = h.store.UpdateAccountUsername(r.Context(), id, username)
+		if h.writeFailed(w, r, h.store.UpdateAccountUsername(r.Context(), id, username), "UpdateAccountUsername", "/admin/accounts/"+id) {
+			return
+		}
 	}
 	if role == RoleAdmin || role == RoleStandard {
 		if role == RoleStandard && h.isLastAdmin(r.Context(), id) {
 			http.Redirect(w, r, "/admin/accounts/"+id+"?error=Cannot+demote+the+last+admin+account.", http.StatusSeeOther)
 			return
 		}
-		_ = h.store.UpdateAccountRole(r.Context(), id, role)
+		if h.writeFailed(w, r, h.store.UpdateAccountRole(r.Context(), id, role), "UpdateAccountRole", "/admin/accounts/"+id) {
+			return
+		}
 	}
 	http.Redirect(w, r, "/admin/accounts/"+id+"?flash=Account+updated.", http.StatusSeeOther)
 }
@@ -873,7 +901,9 @@ func (h *WebHandler) handleChangeAccountPassword(w http.ResponseWriter, r *http.
 		http.Redirect(w, r, "/admin/accounts/"+id+"?error="+msg, http.StatusSeeOther)
 		return
 	}
-	_ = h.store.UpdateAccountPassword(r.Context(), id, pwhash)
+	if h.writeFailed(w, r, h.store.UpdateAccountPassword(r.Context(), id, pwhash), "UpdateAccountPassword", "/admin/accounts/"+id) {
+		return
+	}
 	http.Redirect(w, r, "/admin/accounts/"+id+"?flash=Password+updated.", http.StatusSeeOther)
 }
 
@@ -898,7 +928,9 @@ func (h *WebHandler) handleDeleteAccount(w http.ResponseWriter, r *http.Request)
 func (h *WebHandler) handleAdminDeleteAPIKey(w http.ResponseWriter, r *http.Request) {
 	accountID := r.PathValue("id")
 	keyID := r.PathValue("keyId")
-	_ = h.store.DeleteAPIKey(r.Context(), keyID, accountID)
+	if h.writeFailed(w, r, h.store.DeleteAPIKey(r.Context(), keyID, accountID), "DeleteAPIKey", "/admin/accounts/"+accountID) {
+		return
+	}
 	h.logger.Info("API key revoked by admin", "key_id", keyID, "account_id", accountID)
 	http.Redirect(w, r, "/admin/accounts/"+accountID+"?flash=API+key+revoked.", http.StatusSeeOther)
 }
@@ -988,7 +1020,9 @@ func (h *WebHandler) handleDeleteDevice(w http.ResponseWriter, r *http.Request) 
 	accountID := r.PathValue("id")
 	username := r.PathValue("username")
 	device := r.PathValue("device")
-	_ = h.store.DeleteDevice(r.Context(), username, device)
+	if h.writeFailed(w, r, h.store.DeleteDevice(r.Context(), username, device), "DeleteDevice", "/admin/accounts/"+accountID+"/users/"+username) {
+		return
+	}
 	h.logger.Info("device deleted", "username", username, "device", device)
 	http.Redirect(w, r, "/admin/accounts/"+accountID+"/users/"+username, http.StatusSeeOther)
 }
@@ -997,8 +1031,8 @@ func (h *WebHandler) handleDeleteSubscriptions(w http.ResponseWriter, r *http.Re
 	accountID := r.PathValue("id")
 	username := r.PathValue("username")
 	subs, _ := h.store.GetSubscriptions(r.Context(), username)
-	if len(subs) > 0 {
-		_ = h.store.UpdateSubscriptions(r.Context(), username, nil, subs, time.Now().Unix())
+	if len(subs) > 0 && h.writeFailed(w, r, h.store.UpdateSubscriptions(r.Context(), username, nil, subs, time.Now().Unix()), "UpdateSubscriptions", "/admin/accounts/"+accountID+"/users/"+username) {
+		return
 	}
 	http.Redirect(w, r, "/admin/accounts/"+accountID+"/users/"+username, http.StatusSeeOther)
 }
@@ -1006,7 +1040,9 @@ func (h *WebHandler) handleDeleteSubscriptions(w http.ResponseWriter, r *http.Re
 func (h *WebHandler) handleDeleteSingleSubscription(w http.ResponseWriter, r *http.Request) {
 	accountID := r.PathValue("id")
 	username := r.PathValue("username")
-	h.deleteSubscription(r.Context(), username, r.FormValue("url"))
+	if h.writeFailed(w, r, h.deleteSubscription(r.Context(), username, r.FormValue("url")), "UpdateSubscriptions", "/admin/accounts/"+accountID+"/users/"+username) {
+		return
+	}
 	http.Redirect(w, r, "/admin/accounts/"+accountID+"/users/"+username, http.StatusSeeOther)
 }
 
@@ -1027,9 +1063,9 @@ func (h *WebHandler) handleAdminImportOPML(w http.ResponseWriter, r *http.Reques
 	username := r.PathValue("username")
 	redirect := "/admin/accounts/" + accountID + "/users/" + username
 
-	n, err := h.importOPML(r.Context(), username, r)
-	if err != nil {
-		http.Redirect(w, r, redirect+"?error=Invalid+OPML+file.", http.StatusSeeOther)
+	n, errMsg := h.importOPML(r.Context(), username, r)
+	if errMsg != "" {
+		http.Redirect(w, r, redirect+"?error="+errMsg, http.StatusSeeOther)
 		return
 	}
 	http.Redirect(w, r, redirect+"?flash=Imported+"+fmt.Sprint(n)+"+subscriptions.", http.StatusSeeOther)
@@ -1116,10 +1152,17 @@ func (h *WebHandler) handleSettingsPage(w http.ResponseWriter, r *http.Request) 
 func (h *WebHandler) handleSettingsSave(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	sessionMaxAge := parseFormInt(r.FormValue("session_max_age_hours"))
-	episodeRetention := parseFormInt(r.FormValue("episode_retention_days"))
-	inactiveAccountDays := parseFormInt(r.FormValue("inactive_account_days"))
+	sessionMaxAge, okSessionMaxAge := parseSettingInt(r.FormValue("session_max_age_hours"))
+	episodeRetention, okEpisodeRetention := parseSettingInt(r.FormValue("episode_retention_days"))
+	inactiveAccountDays, okInactiveDays := parseSettingInt(r.FormValue("inactive_account_days"))
+	maxUsersPerAccount, okMaxUsers := parseSettingInt(r.FormValue("max_users_per_account"))
+	maxAPIKeys, okMaxAPIKeys := parseSettingInt(r.FormValue("max_api_keys_per_account"))
+	minPasswordLength, okMinPasswordLength := parseSettingInt(r.FormValue("min_password_length"))
 
+	if !okSessionMaxAge || !okEpisodeRetention || !okInactiveDays || !okMaxUsers || !okMaxAPIKeys || !okMinPasswordLength {
+		h.settingsError(w, r, "Settings must be whole, non-negative numbers.")
+		return
+	}
 	if sessionMaxAge < 1 {
 		h.settingsError(w, r, "Session max age must be at least 1 hour.")
 		return
@@ -1133,31 +1176,58 @@ func (h *WebHandler) handleSettingsSave(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	_ = h.store.SetSetting(ctx, SettingSelfRegistration, strconv.FormatBool(r.FormValue("self_registration") == "true"))
-	_ = h.store.SetSetting(ctx, SettingAllowUserCreation, strconv.FormatBool(r.FormValue("allow_user_creation") == "true"))
-	_ = h.store.SetSetting(ctx, SettingAllowSharing, strconv.FormatBool(r.FormValue("allow_sharing") == "true"))
-	_ = h.store.SetSetting(ctx, SettingAllowAPIKeys, strconv.FormatBool(r.FormValue("allow_api_keys") == "true"))
-	_ = h.store.SetSetting(ctx, SettingMaxUsersPerAccount, clampedMinIntString(r.FormValue("max_users_per_account"), 0))
-	_ = h.store.SetSetting(ctx, SettingMaxAPIKeys, clampedMinIntString(r.FormValue("max_api_keys_per_account"), 1))
-	_ = h.store.SetSetting(ctx, SettingMinPasswordLength, clampedMinIntString(r.FormValue("min_password_length"), 0))
-	_ = h.store.SetSetting(ctx, SettingSessionMaxAge, strconv.Itoa(sessionMaxAge))
-	_ = h.store.SetSetting(ctx, SettingEpisodeRetention, strconv.Itoa(episodeRetention))
-	_ = h.store.SetSetting(ctx, SettingInactiveAccountDays, strconv.Itoa(inactiveAccountDays))
+	if err := errors.Join(
+		h.store.SetSetting(ctx, SettingSelfRegistration, strconv.FormatBool(r.FormValue("self_registration") == "true")),
+		h.store.SetSetting(ctx, SettingAllowUserCreation, strconv.FormatBool(r.FormValue("allow_user_creation") == "true")),
+		h.store.SetSetting(ctx, SettingAllowSharing, strconv.FormatBool(r.FormValue("allow_sharing") == "true")),
+		h.store.SetSetting(ctx, SettingAllowAPIKeys, strconv.FormatBool(r.FormValue("allow_api_keys") == "true")),
+		h.store.SetSetting(ctx, SettingMaxUsersPerAccount, strconv.Itoa(maxUsersPerAccount)),
+		h.store.SetSetting(ctx, SettingMaxAPIKeys, strconv.Itoa(max(maxAPIKeys, 1))),
+		h.store.SetSetting(ctx, SettingMinPasswordLength, strconv.Itoa(minPasswordLength)),
+		h.store.SetSetting(ctx, SettingSessionMaxAge, strconv.Itoa(sessionMaxAge)),
+		h.store.SetSetting(ctx, SettingEpisodeRetention, strconv.Itoa(episodeRetention)),
+		h.store.SetSetting(ctx, SettingInactiveAccountDays, strconv.Itoa(inactiveAccountDays)),
+	); err != nil {
+		h.logger.Error("store write failed", "op", "SetSetting", "err", err)
+		h.settingsError(w, r, "Could not save settings. Please try again.")
+		return
+	}
 
 	h.logger.Info("settings updated")
 	http.Redirect(w, r, "/admin/settings?flash=Settings+saved.", http.StatusSeeOther)
+}
+
+// webWriteErrMsg is what the user sees when a store write fails. The detail
+// goes to the log, not to the browser.
+const webWriteErrMsg = "Could+not+save+changes.+Please+try+again."
+
+// writeFailed reports a failed store write instead of pretending the change
+// went through. Returns true when the caller should stop.
+func (h *WebHandler) writeFailed(w http.ResponseWriter, r *http.Request, err error, op, redirect string) bool {
+	if err == nil {
+		return false
+	}
+	h.logger.Error("store write failed", "op", op, "err", err)
+	http.Redirect(w, r, redirect+"?error="+webWriteErrMsg, http.StatusSeeOther)
+	return true
 }
 
 func (h *WebHandler) settingsError(w http.ResponseWriter, r *http.Request, msg string) {
 	http.Redirect(w, r, "/admin/settings?error="+strings.ReplaceAll(msg, " ", "+"), http.StatusSeeOther)
 }
 
-func parseFormInt(s string) int {
-	n, _ := strconv.Atoi(s)
-	if n < 0 {
-		return 0
+// parseSettingInt parses a numeric settings field. An empty field means zero.
+// Reports false for anything that is not a whole, non-negative number, so a
+// typo cannot silently turn a limit into "unlimited".
+func parseSettingInt(s string) (int, bool) {
+	if s == "" {
+		return 0, true
 	}
-	return n
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 0 {
+		return 0, false
+	}
+	return n, true
 }
 
 func (h *WebHandler) isSettingEnabled(ctx context.Context, key string) bool {
@@ -1314,7 +1384,9 @@ func (h *WebHandler) handleSelfEnableSharing(w http.ResponseWriter, r *http.Requ
 		http.Redirect(w, r, "/users/"+username, http.StatusSeeOther)
 		return
 	}
-	_ = h.store.SetUserShareToken(r.Context(), username, new(uuid.New().String()))
+	if h.writeFailed(w, r, h.store.SetUserShareToken(r.Context(), username, new(uuid.New().String())), "SetUserShareToken", "/users/"+username) {
+		return
+	}
 	http.Redirect(w, r, "/users/"+username+"?flash=Share+links+generated.", http.StatusSeeOther)
 }
 
@@ -1323,7 +1395,9 @@ func (h *WebHandler) handleSelfDisableSharing(w http.ResponseWriter, r *http.Req
 	if !ok {
 		return
 	}
-	_ = h.store.SetUserShareToken(r.Context(), username, nil)
+	if h.writeFailed(w, r, h.store.SetUserShareToken(r.Context(), username, nil), "SetUserShareToken", "/users/"+username) {
+		return
+	}
 	http.Redirect(w, r, "/users/"+username+"?flash=Sharing+disabled.", http.StatusSeeOther)
 }
 
@@ -1334,14 +1408,18 @@ func (h *WebHandler) handleAdminEnableSharing(w http.ResponseWriter, r *http.Req
 		http.Redirect(w, r, "/admin/accounts/"+accountID+"/users/"+username, http.StatusSeeOther)
 		return
 	}
-	_ = h.store.SetUserShareToken(r.Context(), username, new(uuid.New().String()))
+	if h.writeFailed(w, r, h.store.SetUserShareToken(r.Context(), username, new(uuid.New().String())), "SetUserShareToken", "/admin/accounts/"+accountID+"/users/"+username) {
+		return
+	}
 	http.Redirect(w, r, "/admin/accounts/"+accountID+"/users/"+username+"?flash=Share+links+generated.", http.StatusSeeOther)
 }
 
 func (h *WebHandler) handleAdminDisableSharing(w http.ResponseWriter, r *http.Request) {
 	accountID := r.PathValue("id")
 	username := r.PathValue("username")
-	_ = h.store.SetUserShareToken(r.Context(), username, nil)
+	if h.writeFailed(w, r, h.store.SetUserShareToken(r.Context(), username, nil), "SetUserShareToken", "/admin/accounts/"+accountID+"/users/"+username) {
+		return
+	}
 	http.Redirect(w, r, "/admin/accounts/"+accountID+"/users/"+username+"?flash=Sharing+disabled.", http.StatusSeeOther)
 }
 
@@ -1473,6 +1551,7 @@ func (h *WebHandler) getSessionAccount(r *http.Request) *Account {
 		return nil
 	}
 	if h.sessionExpired(r.Context(), acct.SessionCreated) {
+		// Best effort: the session is already treated as expired either way.
 		_ = h.store.UpdateAccountSession(r.Context(), acct.ID, nil, time.Time{})
 		return nil
 	}
@@ -1505,11 +1584,6 @@ func (h *WebHandler) isLastAdmin(ctx context.Context, id string) bool {
 		}
 	}
 	return true
-}
-
-func clampedMinIntString(s string, minVal int64) string {
-	n, _ := strconv.ParseInt(s, 10, 64)
-	return strconv.FormatInt(max(n, minVal), 10)
 }
 
 func formatTimestamp(t time.Time) string {
