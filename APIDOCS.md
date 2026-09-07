@@ -2,11 +2,13 @@
 
 The goPodder API allows you to programmatically manage your podcast synchronization data. Use it to build automation scripts, custom integrations, or third-party tools that interact with your goPodder instance.
 
+**Terminology:** the `/api/v1/users` endpoints manage what the web UI calls **sync logins** — the username and password a podcast app syncs with. The `/api/v1/accounts` endpoints manage **accounts**, the logins for the web UI itself. The API paths keep the `users` spelling for backwards compatibility.
+
 ## Quick Start
 
 ```bash
 # Create an API key in the web UI: Account > API Keys > Create Key
-# Then use it to list your gPodder users:
+# Then use it to list your sync logins:
 curl -H "Authorization: Bearer gp_your_key_here" https://your-instance/api/v1/users
 ```
 
@@ -24,7 +26,7 @@ API keys are created in the web UI under **Account > API Keys**. The key is show
 
 | Role | Access |
 |------|--------|
-| `standard` | Manage your own account's gPodder users, devices, and subscriptions |
+| `standard` | Manage your own account's sync logins, devices, and subscriptions |
 | `admin` | Everything above, plus manage all accounts on the instance |
 
 Admin keys can only be created by admin accounts. Standard keys are scoped to the account that created them.
@@ -58,7 +60,7 @@ All error responses return JSON with an `error` field:
 
 #### List Users
 
-Returns all gPodder users belonging to your account.
+Returns all sync logins belonging to your account.
 
 ```
 GET /api/v1/users
@@ -92,7 +94,7 @@ curl -H "Authorization: Bearer gp_your_key" https://your-instance/api/v1/users
 
 #### Create User
 
-Creates a new gPodder user linked to your account.
+Creates a new sync login linked to your account.
 
 ```
 POST /api/v1/users
@@ -139,7 +141,7 @@ curl -X POST -H "Authorization: Bearer gp_your_key" \
 
 #### Delete User
 
-Deletes a gPodder user and all associated data (devices, subscriptions, episode actions).
+Deletes a sync login and all associated data (devices, subscriptions, episode actions).
 
 ```
 DELETE /api/v1/users/{username}
@@ -331,7 +333,7 @@ GET /api/v1/accounts
 ]
 ```
 
-The `last_login` field shows when the account last logged into the web UI. The `last_activity` field shows the most recent sync activity across all gPodder users linked to the account. Both are omitted if never occurred.
+The `last_login` field shows when the account last logged into the web UI. The `last_activity` field shows the most recent sync activity across all sync logins linked to the account. Both are omitted if never occurred.
 
 ---
 
@@ -390,7 +392,7 @@ DELETE /api/v1/accounts/{id}
 
 #### List Account Users
 
-Returns all gPodder users belonging to a specific account.
+Returns all sync logins belonging to a specific account.
 
 ```
 GET /api/v1/accounts/{id}/users

@@ -14,9 +14,9 @@ goPodder does one thing: it keeps your podcast subscriptions and episode progres
 ## Features
 
 - Works with [AntennaPod](https://antennapod.org/), [gPodder](https://gpodder.github.io/), [Cardo](https://github.com/cardo-podcast/cardo), and anything else that speaks the [gPodder sync protocol](https://gpoddernet.readthedocs.io/en/latest/api/)
-- Built-in web UI for managing accounts, users, devices, and subscriptions
+- Built-in web UI for managing accounts, sync logins, devices, and subscriptions
 - [REST API](APIDOCS.md) with API key auth for scripts, provisioning, and custom integrations
-- Multi-user support with admin/standard roles, per-account user limits, optional self-registration
+- Multi-account support with admin/standard roles, per-account sync login limits, optional self-registration
 - SQLite by default (zero config), PostgreSQL if you need it
 - Share your subscriptions publicly via OPML and RSS links
 - No outbound connections. The server never phones home, never fetches feed URLs, never resolves external DNS. Your subscription data stays on your box
@@ -39,7 +39,7 @@ goPodder is a single binary with a built-in web UI, multi-user support, and SQLi
 docker run --rm -p 8080:8080 ghcr.io/cbrgm/gopodder:latest
 ```
 
-Open `http://localhost:8080` in your browser. On first launch you'll be asked to create an admin account. After that, create a goPodder user from the web UI and point your podcast app at the server.
+Open `http://localhost:8080` in your browser. On first launch you'll be asked to create an admin account. After that, create a sync login from the web UI and point your podcast app at the server.
 
 ## Setup
 
@@ -128,10 +128,10 @@ The password is injected into the connection string at startup. Special characte
 
 ## Connecting your podcast app
 
-1. Create a goPodder user in the web UI (under the "Users" tab)
+1. Create a sync login in the web UI (under the "Sync Logins" tab)
 2. In your podcast app, look for "gPodder.net sync" or "Synchronize subscriptions"
 3. Set the server URL to `https://your-server`
-4. Log in with the goPodder user credentials you created
+4. Log in with the sync login username and password you created
 
 **Note:** Some clients (like AntennaPod) require HTTPS. goPodder itself does not terminate TLS, so you'll need to run it behind a reverse proxy like [Caddy](https://caddyserver.com/) or [nginx](https://nginx.org/) that handles HTTPS. For quick testing, tunnels like [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/), [Tailscale Funnel](https://tailscale.com/kb/1223/funnel), or [ngrok](https://ngrok.com/) work but a reverse proxy is the proper solution for permanent setups
 
@@ -227,7 +227,7 @@ No. The server never makes outbound network connections. It stores your feed URL
 
 ## REST API
 
-goPodder provides a REST API for programmatic access to manage users, subscriptions, and accounts. Create API keys in the web UI under **Account > API Keys** and authenticate with a Bearer token:
+goPodder provides a REST API for programmatic access to manage sync logins, subscriptions, and accounts. Create API keys in the web UI under **Account > API Keys** and authenticate with a Bearer token:
 
 ```bash
 curl -H "Authorization: Bearer gp_your_key_here" https://your-server/api/v1/users
@@ -266,7 +266,7 @@ graph LR
     STORE <--> DB
 ```
 
-Podcast apps sync subscriptions and episode progress over HTTP using the gPodder-compatible sync API. The web UI and its management API handle account, user, and subscription administration. Both talk to the same store layer, which supports SQLite or PostgreSQL
+Podcast apps sync subscriptions and episode progress over HTTP using the gPodder-compatible sync API. The web UI and its management API handle account, sync login, and subscription administration. Both talk to the same store layer, which supports SQLite or PostgreSQL
 
 ## Building from source
 
