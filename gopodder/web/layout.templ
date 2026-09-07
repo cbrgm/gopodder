@@ -92,7 +92,7 @@ templ navbar(username string, isAdmin bool, activeTab string) {
 	<nav>
 		<span class="brand">🎧 goPodder</span>
 		if username != "" {
-			<a href="/users" class={ "tab", templ.KV("active", activeTab == "users") }>Users</a>
+			<a href="/users" class={ "tab", templ.KV("active", activeTab == "users") }>Sync Logins</a>
 			if isAdmin {
 				<a href="/admin/accounts" class={ "tab", templ.KV("active", activeTab == "accounts") }>Accounts</a>
 				<a href="/admin/settings" class={ "tab", templ.KV("active", activeTab == "settings") }>Settings</a>
