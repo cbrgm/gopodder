@@ -434,7 +434,7 @@ func (h *WebHandler) handleSelfUserDetail(w http.ResponseWriter, r *http.Request
 		return
 	}
 	acct := webAccountFromContext(r.Context())
-	data := h.buildUserDetailData(r.Context(), r, acct, username, "users", "/users/"+username, "/users", "Back to Users")
+	data := h.buildUserDetailData(r.Context(), r, acct, username, "users", "/users/"+username, "/users", "Back to Sync Logins")
 	data.Flash = r.URL.Query().Get("flash")
 	data.Error = r.URL.Query().Get("error")
 	_ = web.UserDetailPage(data).Render(r.Context(), w)

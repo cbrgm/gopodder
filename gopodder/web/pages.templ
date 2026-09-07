@@ -28,7 +28,7 @@ templ SetupPage(errMsg string) {
 				<button type="submit" class="btn btn-primary">Get Started</button>
 			</div>
 		</form>
-		<p class="setting-desc" style="margin-top: 20px; text-align: center;">Next: go to Users, create a goPodder user, then log in with that username and password in your podcast app.</p>
+		<p class="setting-desc" style="margin-top: 20px; text-align: center;">Next: go to Sync Logins, create one, then enter that username and password in your podcast app.</p>
 	}
 }
 
@@ -133,7 +133,7 @@ templ StatusPage(data StatusData) {
 					<td>{ fmt.Sprint(data.Stats.Accounts) }</td>
 				</tr>
 				<tr>
-					<th>goPodder Users</th>
+					<th>Sync Logins</th>
 					<td>{ fmt.Sprint(data.Stats.Users) }</td>
 				</tr>
 				<tr>
@@ -163,7 +163,7 @@ templ StatusPage(data StatusData) {
 templ AccountsPage(data AccountsPageData) {
 	@layout(data.Account, true, "accounts") {
 		<h1>Accounts</h1>
-		<p class="page-desc">Accounts are used to log in to this web interface. Each account can have one or more goPodder users linked to it for podcast synchronization.</p>
+		<p class="page-desc">Accounts log in to this web interface. Each account can have one or more sync logins for podcast apps.</p>
 		@alertError(data.Error)
 		@alertSuccess(data.Flash)
 		<div class="section">
@@ -196,7 +196,7 @@ templ AccountsPage(data AccountsPageData) {
 				<tr>
 					<th>Account Name</th>
 					<th>Role</th>
-					<th>goPodder Users</th>
+					<th>Sync Logins</th>
 					<th>Created</th>
 					<th>Last Login</th>
 					<th>Last Activity</th>
@@ -280,9 +280,9 @@ templ AccountEditPage(data AccountEditData) {
 			</form>
 		</div>
 		<div class="section">
-			<h2>goPodder Users</h2>
+			<h2>Sync Logins</h2>
 			if len(data.Users) == 0 {
-				<p>No goPodder users linked to this account.</p>
+				<p>No sync logins for this account.</p>
 			} else {
 				<div class="table-wrap">
 					<table>
@@ -302,7 +302,7 @@ templ AccountEditPage(data AccountEditData) {
 								<td>
 									<div class="btn-group">
 										<a href={ templ.SafeURL("/admin/accounts/" + data.EditAccount.ID + "/users/" + user.Username) } class="btn">Details</a>
-										<form method="POST" action={ templ.SafeURL("/admin/accounts/" + data.EditAccount.ID + "/users/" + user.Username + "/delete") } style="display:inline;" onsubmit="return confirm('Delete this user? This cannot be undone.');">
+										<form method="POST" action={ templ.SafeURL("/admin/accounts/" + data.EditAccount.ID + "/users/" + user.Username + "/delete") } style="display:inline;" onsubmit="return confirm('Delete this sync login? This cannot be undone.');">
 											@csrfField()
 											<button type="submit" class="btn btn-danger">Delete</button>
 										</form>
@@ -313,7 +313,7 @@ templ AccountEditPage(data AccountEditData) {
 					</table>
 				</div>
 			}
-			<h3>Create goPodder User</h3>
+			<h3>Create Sync Login</h3>
 			<form method="POST" action={ templ.SafeURL("/admin/accounts/" + data.EditAccount.ID + "/users") }>
 				@csrfField()
 				<div class="form-row">
@@ -326,7 +326,7 @@ templ AccountEditPage(data AccountEditData) {
 				</div>
 				<div class="form-row">
 					<label></label>
-					<button type="submit" class="btn btn-primary">Create User</button>
+					<button type="submit" class="btn btn-primary">Create Sync Login</button>
 				</div>
 			</form>
 		</div>
@@ -374,13 +374,13 @@ templ UserDetailPage(data UserDetailData) {
 		if data.ActiveTab == "accounts" {
 			<h1>Accounts / { data.AccountName } / { data.Username }</h1>
 		} else {
-			<h1>Users / { data.Username }</h1>
+			<h1>Sync Logins / { data.Username }</h1>
 		}
 		@alertError(data.Error)
 		@alertSuccess(data.Flash)
 		<div class="section">
 			<h2>Devices</h2>
-			<p class="setting-desc">Devices register automatically when your podcast app syncs and share the same subscriptions. Removing one here cleans up the list, but it will reappear on the next sync unless you change the user's password.</p>
+			<p class="setting-desc">Devices register automatically when your podcast app syncs and share the same subscriptions. Removing one here cleans up the list, but it will reappear on the next sync unless you change the sync login's password.</p>
 			if len(data.Devices) == 0 {
 				<p>No devices registered yet.</p>
 			} else {
@@ -521,7 +521,7 @@ templ UserDetailPage(data UserDetailData) {
 		}
 		<div class="section">
 			<h2>Change Password</h2>
-			<p class="setting-desc">Change the password for this goPodder user. This is the password used by podcast apps to authenticate with the sync server.</p>
+			<p class="setting-desc">Change the password for this sync login. Podcast apps use it to authenticate with the sync server.</p>
 			<form method="POST" action={ templ.SafeURL(data.BasePath + "/password") }>
 				@csrfField()
 				<div class="form-row">
@@ -544,13 +544,13 @@ templ UserDetailPage(data UserDetailData) {
 
 templ UserManagementPage(data UserManagementData) {
 	@layout(data.Account, data.IsAdmin, "users") {
-		<h1>Users</h1>
-		<p class="page-desc">goPodder users are the credentials your podcast apps use to log in and sync. Enter these in your app's gPodder sync settings (username and password) along with your server URL. Each user can be connected to multiple devices.</p>
+		<h1>Sync Logins</h1>
+		<p class="page-desc">A sync login is the username and password your podcast app uses to sync. Enter these in your app's gPodder sync settings along with your server URL. Each sync login can be connected to multiple devices.</p>
 		@alertError(data.Error)
 		@alertSuccess(data.Flash)
 		if data.CanCreateUsers {
 			<div class="section">
-				<h2>Create goPodder User</h2>
+				<h2>Create Sync Login</h2>
 				<form method="POST" action="/users">
 					@csrfField()
 					<div class="form-row">
@@ -563,15 +563,15 @@ templ UserManagementPage(data UserManagementData) {
 					</div>
 					<div class="form-row">
 						<label></label>
-						<button type="submit" class="btn btn-primary">Create User</button>
+						<button type="submit" class="btn btn-primary">Create Sync Login</button>
 					</div>
 				</form>
 			</div>
 		}
 		if len(data.Users) == 0 {
-			<p>No goPodder users linked to your account.</p>
+			<p>No sync logins for your account.</p>
 			if !data.CanCreateUsers {
-				<p class="setting-desc">Contact an administrator to have goPodder users created for your account.</p>
+				<p class="setting-desc">Contact an administrator to have sync logins created for your account.</p>
 			}
 		} else {
 			<div class="table-wrap">
@@ -595,7 +595,7 @@ templ UserManagementPage(data UserManagementData) {
 									if user.Subscriptions > 0 {
 										<a href={ templ.SafeURL("/opml?user=" + user.Username) } class="btn" title="Export all subscriptions of this user as OPML">Export OPML</a>
 									}
-									<form method="POST" action={ templ.SafeURL("/users/" + user.Username + "/delete") } style="display:inline;" onsubmit="return confirm('Delete this user? This cannot be undone.');">
+									<form method="POST" action={ templ.SafeURL("/users/" + user.Username + "/delete") } style="display:inline;" onsubmit="return confirm('Delete this sync login? This cannot be undone.');">
 										@csrfField()
 										<button type="submit" class="btn btn-danger">Delete</button>
 									</form>
@@ -612,7 +612,7 @@ templ UserManagementPage(data UserManagementData) {
 templ SettingsPage(data SettingsPageData) {
 	@layout(data.Account, true, "settings") {
 		<h1>Settings</h1>
-		<p class="page-desc">Configure how goPodder behaves. Changes take effect immediately for all users.</p>
+		<p class="page-desc">Configure how goPodder behaves. Changes take effect immediately for all accounts.</p>
 		@alertError(data.Error)
 		@alertSuccess(data.Flash)
 		<form method="POST" action="/admin/settings">
@@ -636,7 +636,7 @@ templ SettingsPage(data SettingsPageData) {
 				<p class="setting-desc">When enabled, a "Register" button is shown on the login page. Anyone can create their own account without admin intervention. Self-registered accounts are assigned the "standard" role.</p>
 			</div>
 			<div class="section">
-				<h2>User Management</h2>
+				<h2>Sync Logins</h2>
 				<div class="setting-item">
 					<label for="allow-user-creation">
 						<input
@@ -648,15 +648,15 @@ templ SettingsPage(data SettingsPageData) {
 								checked
 							}
 						/>
-						Allow users to create goPodder users
+						Allow accounts to create their own sync logins
 					</label>
 				</div>
-				<p class="setting-desc">When enabled, standard accounts can create and manage their own goPodder users from the Users tab. When disabled, only admins can create goPodder users for accounts.</p>
+				<p class="setting-desc">When enabled, standard accounts can create and manage their own sync logins from the Sync Logins tab. When disabled, only admins can create sync logins for accounts.</p>
 				<div class="setting-item">
-					<label for="max-users">Max goPodder users per account</label>
+					<label for="max-users">Max sync logins per account</label>
 					<input type="number" id="max-users" name="max_users_per_account" value={ fmt.Sprint(data.MaxUsersPerAccount) } min="0"/>
 				</div>
-				<p class="setting-desc">Maximum number of goPodder users each account can create. Set to 0 for unlimited.</p>
+				<p class="setting-desc">Maximum number of sync logins each account can create. Set to 0 for unlimited.</p>
 				<div class="setting-item">
 					<label for="allow-sharing">
 						<input
@@ -671,7 +671,7 @@ templ SettingsPage(data SettingsPageData) {
 						Allow subscription sharing
 					</label>
 				</div>
-				<p class="setting-desc">When enabled, users can generate public links to share their subscriptions as OPML or RSS feeds. When disabled, sharing is not available and existing share links stop working.</p>
+				<p class="setting-desc">When enabled, accounts can generate public links to share their subscriptions as OPML or RSS feeds. When disabled, sharing is not available and existing share links stop working.</p>
 				<div class="setting-item">
 					<label for="allow-api-keys">
 						<input
@@ -699,7 +699,7 @@ templ SettingsPage(data SettingsPageData) {
 					<label for="min-pw-length">Minimum password length</label>
 					<input type="number" id="min-pw-length" name="min_password_length" value={ fmt.Sprint(data.MinPasswordLength) } min="0"/>
 				</div>
-				<p class="setting-desc">Minimum number of characters required for all passwords (accounts and goPodder users). Default is 8. Setting this below 8 weakens security and is not recommended.</p>
+				<p class="setting-desc">Minimum number of characters required for all passwords (accounts and sync logins). Default is 8. Setting this below 8 weakens security and is not recommended.</p>
 				<div class="setting-item">
 					<label for="session-max-age">Session max age (hours)</label>
 					<input type="number" id="session-max-age" name="session_max_age_hours" value={ fmt.Sprint(data.SessionMaxAge) } min="1"/>
@@ -766,7 +766,7 @@ templ AccountSelfPage(data AccountSelfData) {
 		if data.APIKeysAllowed {
 			<div class="section">
 				<h2>API Keys</h2>
-				<p class="setting-desc">API keys allow programmatic access to manage goPodder users and subscriptions. Authenticate with a Bearer token in the Authorization header.</p>
+				<p class="setting-desc">API keys allow programmatic access to manage sync logins and subscriptions. Authenticate with a Bearer token in the Authorization header.</p>
 				<p class="setting-desc"><a href={ templ.SafeURL(RepoURL + "/blob/main/APIDOCS.md") } target="_blank">View API documentation</a></p>
 				if len(data.APIKeys) > 0 {
 					<div class="table-wrap">
@@ -824,7 +824,7 @@ templ AccountSelfPage(data AccountSelfData) {
 		}
 		<div class="section">
 			<h2>Delete Account</h2>
-			<p class="setting-desc">Permanently delete your account and all associated goPodder users, devices, and subscriptions. This cannot be undone.</p>
+			<p class="setting-desc">Permanently delete your account and all associated sync logins, devices, and subscriptions. This cannot be undone.</p>
 			<form method="POST" action="/account/delete" onsubmit="return confirm('Are you sure you want to delete your account? All data will be permanently lost.');">
 				@csrfField()
 				<div class="form-row">
