@@ -1320,8 +1320,9 @@ ON CONFLICT(username, podcast, episode) DO UPDATE SET
     started = excluded.started,
     position = excluded.position,
     total = excluded.total,
-    modified = CASE WHEN excluded.content_hash != episodes.content_hash THEN excluded.modified ELSE episodes.modified END,
+    modified = excluded.modified,
     content_hash = excluded.content_hash
+WHERE excluded.content_hash != episodes.content_hash
 `
 
 type UpsertEpisodeParams struct {

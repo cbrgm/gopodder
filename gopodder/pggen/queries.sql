@@ -188,8 +188,9 @@ ON CONFLICT(username, podcast, episode) DO UPDATE SET
     started = EXCLUDED.started,
     position = EXCLUDED.position,
     total = EXCLUDED.total,
-    modified = CASE WHEN EXCLUDED.content_hash != episodes.content_hash THEN EXCLUDED.modified ELSE episodes.modified END,
-    content_hash = EXCLUDED.content_hash;
+    modified = EXCLUDED.modified,
+    content_hash = EXCLUDED.content_hash
+WHERE EXCLUDED.content_hash != episodes.content_hash;
 
 -- Stats
 -- name: CountUsers :one

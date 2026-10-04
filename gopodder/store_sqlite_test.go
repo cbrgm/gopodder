@@ -840,6 +840,98 @@ func TestSQLiteStore_Episodes(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("echo without metadata does not erase existing device/timestamp when state is unchanged", func(t *testing.T) {
+		// Self-contained on its own episode: earlier subtests in this test
+		// already exercise plain position updates without a timestamp,
+		// which legitimately clears it (the state genuinely changed), so
+		// reusing ep1.mp3 here would depend on that unrelated history.
+		echoDevice := "antennapod"
+		echoTs := "2024-06-10T08:00:00"
+		pos := int64(300)
+		original := []Episode{{
+			Podcast:   "http://podcast1.com/feed",
+			Episode:   "http://podcast1.com/ep-echo.mp3",
+			Device:    &echoDevice,
+			Timestamp: &echoTs,
+			Action:    "play",
+			Started:   &started,
+			Position:  &pos,
+			Total:     &total,
+		}}
+		if err := store.UpdateEpisodes(ctx, "alice", original, 300); err != nil {
+			t.Fatalf("UpdateEpisodes (original): %v", err)
+		}
+
+		// Simulates a second client (e.g. one that doesn't track devices)
+		// re-syncing the same playback state it pulled from this episode,
+		// without resending device/timestamp/guid.
+		echo := []Episode{{
+			Podcast:  "http://podcast1.com/feed",
+			Episode:  "http://podcast1.com/ep-echo.mp3",
+			Action:   "play",
+			Started:  &started,
+			Position: &pos,
+			Total:    &total,
+		}}
+		if err := store.UpdateEpisodes(ctx, "alice", echo, 310); err != nil {
+			t.Fatalf("UpdateEpisodes (echo): %v", err)
+		}
+
+		eps, err := store.GetEpisodes(ctx, EpisodeQuery{Username: "alice", Since: 0})
+		if err != nil {
+			t.Fatalf("GetEpisodes: %v", err)
+		}
+		for _, ep := range eps {
+			if ep.Episode != "http://podcast1.com/ep-echo.mp3" {
+				continue
+			}
+			if ep.Device == nil || *ep.Device != "antennapod" {
+				t.Errorf("device = %v, want antennapod to be preserved from the original play", ep.Device)
+			}
+			if ep.Timestamp == nil || *ep.Timestamp != "2024-06-10T08:00:00" {
+				t.Errorf("timestamp = %v, want the original timestamp to be preserved", ep.Timestamp)
+			}
+		}
+
+		t.Run("a real new state from another device still overwrites metadata correctly", func(t *testing.T) {
+			otherDevice := "pinepods"
+			otherTs := "2024-06-11T09:00:00"
+			newPosition := int64(900)
+			next := []Episode{{
+				Podcast:   "http://podcast1.com/feed",
+				Episode:   "http://podcast1.com/ep-echo.mp3",
+				Device:    &otherDevice,
+				Timestamp: &otherTs,
+				Action:    "play",
+				Started:   &started,
+				Position:  &newPosition,
+				Total:     &total,
+			}}
+			if err := store.UpdateEpisodes(ctx, "alice", next, 400); err != nil {
+				t.Fatalf("UpdateEpisodes: %v", err)
+			}
+
+			eps, err := store.GetEpisodes(ctx, EpisodeQuery{Username: "alice", Since: 0})
+			if err != nil {
+				t.Fatalf("GetEpisodes: %v", err)
+			}
+			for _, ep := range eps {
+				if ep.Episode != "http://podcast1.com/ep-echo.mp3" {
+					continue
+				}
+				if ep.Position == nil || *ep.Position != 900 {
+					t.Errorf("position = %v, want 900", ep.Position)
+				}
+				if ep.Device == nil || *ep.Device != "pinepods" {
+					t.Errorf("device = %v, want pinepods (a genuinely new state must still update attribution)", ep.Device)
+				}
+				if ep.Timestamp == nil || *ep.Timestamp != "2024-06-11T09:00:00" {
+					t.Errorf("timestamp = %v, want the new timestamp", ep.Timestamp)
+				}
+			}
+		})
+	})
 }
 
 func TestSQLiteStore_CrossDeviceSubscriptionSync(t *testing.T) {
