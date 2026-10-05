@@ -3,23 +3,36 @@ package gopodder
 import (
 	"context"
 	"database/sql"
-	"embed"
+	_ "embed"
 	"fmt"
 	"time"
 
 	"github.com/cbrgm/gopodder/gopodder/pggen"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	_ "modernc.org/sqlite"
 )
 
+// SQLite runs the same sqlc-generated postgres queries and schema. It accepts
+// the $N placeholders and the BIGINT columns as they are.
+//
 //go:embed pggen/schema.sql
-var pgSchemaFS embed.FS
+var schema string
 
-type PostgresStore struct {
+type SQLStore struct {
 	db      *sql.DB
 	queries *pggen.Queries
 }
 
-func NewPostgresStore(dsn string) (*PostgresStore, error) {
+func NewSQLiteStore(path string) (*SQLStore, error) {
+	db, err := sql.Open("sqlite", path+"?_journal_mode=WAL&_busy_timeout=5000&_foreign_keys=ON")
+	if err != nil {
+		return nil, fmt.Errorf("opening database: %w", err)
+	}
+	db.SetMaxOpenConns(1)
+	return newSQLStore(db)
+}
+
+func NewPostgresStore(dsn string) (*SQLStore, error) {
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("opening database: %w", err)
@@ -33,38 +46,28 @@ func NewPostgresStore(dsn string) (*PostgresStore, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("connecting to database: %w", err)
 	}
+	return newSQLStore(db)
+}
 
-	if err := migratePostgres(db); err != nil {
+func newSQLStore(db *sql.DB) (*SQLStore, error) {
+	if _, err := db.Exec(schema); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("running migrations: %w", err)
 	}
-
-	return &PostgresStore{
-		db:      db,
-		queries: pggen.New(db),
-	}, nil
+	return &SQLStore{db: db, queries: pggen.New(db)}, nil
 }
 
-func migratePostgres(db *sql.DB) error {
-	schema, err := pgSchemaFS.ReadFile("pggen/schema.sql")
-	if err != nil {
-		return err
-	}
-	_, err = db.Exec(string(schema))
-	return err
-}
-
-func (s *PostgresStore) Ping(ctx context.Context) error {
+func (s *SQLStore) Ping(ctx context.Context) error {
 	return s.db.PingContext(ctx)
 }
 
-func (s *PostgresStore) Close() error {
+func (s *SQLStore) Close() error {
 	return s.db.Close()
 }
 
 // Accounts
 
-func (s *PostgresStore) GetAccount(ctx context.Context, username string) (*Account, error) {
+func (s *SQLStore) GetAccount(ctx context.Context, username string) (*Account, error) {
 	row, err := s.queries.GetAccountByUsername(ctx, username)
 	if err != nil {
 		return nil, err
@@ -78,7 +81,7 @@ func (s *PostgresStore) GetAccount(ctx context.Context, username string) (*Accou
 	}, nil
 }
 
-func (s *PostgresStore) GetAccountByID(ctx context.Context, id string) (*Account, error) {
+func (s *SQLStore) GetAccountByID(ctx context.Context, id string) (*Account, error) {
 	row, err := s.queries.GetAccountByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -92,7 +95,7 @@ func (s *PostgresStore) GetAccountByID(ctx context.Context, id string) (*Account
 	}, nil
 }
 
-func (s *PostgresStore) CreateAccount(ctx context.Context, id, username, pwhash, role string, createdAt time.Time) error {
+func (s *SQLStore) CreateAccount(ctx context.Context, id, username, pwhash, role string, createdAt time.Time) error {
 	return s.queries.CreateAccount(ctx, pggen.CreateAccountParams{
 		ID:        id,
 		Username:  username,
@@ -102,7 +105,7 @@ func (s *PostgresStore) CreateAccount(ctx context.Context, id, username, pwhash,
 	})
 }
 
-func (s *PostgresStore) UpdateAccountSession(ctx context.Context, id string, sessionID *string, now time.Time) error {
+func (s *SQLStore) UpdateAccountSession(ctx context.Context, id string, sessionID *string, now time.Time) error {
 	var sessionCreated sql.NullInt64
 	if sessionID != nil {
 		sessionCreated = sql.NullInt64{Int64: now.Unix(), Valid: true}
@@ -114,14 +117,14 @@ func (s *PostgresStore) UpdateAccountSession(ctx context.Context, id string, ses
 	})
 }
 
-func (s *PostgresStore) UpdateAccountLastLogin(ctx context.Context, id string, t time.Time) error {
+func (s *SQLStore) UpdateAccountLastLogin(ctx context.Context, id string, t time.Time) error {
 	return s.queries.UpdateAccountLastLogin(ctx, pggen.UpdateAccountLastLoginParams{
 		LastLogin: sql.NullInt64{Int64: t.Unix(), Valid: true},
 		ID:        id,
 	})
 }
 
-func (s *PostgresStore) GetAccountBySession(ctx context.Context, sessionID string) (*Account, error) {
+func (s *SQLStore) GetAccountBySession(ctx context.Context, sessionID string) (*Account, error) {
 	row, err := s.queries.GetAccountBySession(ctx, sql.NullString{String: sessionID, Valid: true})
 	if err != nil {
 		return nil, err
@@ -136,7 +139,7 @@ func (s *PostgresStore) GetAccountBySession(ctx context.Context, sessionID strin
 	}, nil
 }
 
-func (s *PostgresStore) ListAccounts(ctx context.Context) ([]Account, error) {
+func (s *SQLStore) ListAccounts(ctx context.Context) ([]Account, error) {
 	rows, err := s.queries.ListAccounts(ctx)
 	if err != nil {
 		return nil, err
@@ -161,11 +164,11 @@ func (s *PostgresStore) ListAccounts(ctx context.Context) ([]Account, error) {
 	return accounts, nil
 }
 
-func (s *PostgresStore) DeleteAccount(ctx context.Context, id string) error {
+func (s *SQLStore) DeleteAccount(ctx context.Context, id string) error {
 	return s.queries.DeleteAccount(ctx, id)
 }
 
-func (s *PostgresStore) ListInactiveAccounts(ctx context.Context, cutoff int64) ([]Account, error) {
+func (s *SQLStore) ListInactiveAccounts(ctx context.Context, cutoff int64) ([]Account, error) {
 	rows, err := s.queries.ListInactiveAccounts(ctx, sql.NullInt64{Int64: cutoff, Valid: true})
 	if err != nil {
 		return nil, err
@@ -182,25 +185,25 @@ func (s *PostgresStore) ListInactiveAccounts(ctx context.Context, cutoff int64) 
 	return accounts, nil
 }
 
-func (s *PostgresStore) CountAccounts(ctx context.Context) (int64, error) {
+func (s *SQLStore) CountAccounts(ctx context.Context) (int64, error) {
 	return s.queries.CountAccounts(ctx)
 }
 
-func (s *PostgresStore) UpdateAccountUsername(ctx context.Context, id, username string) error {
+func (s *SQLStore) UpdateAccountUsername(ctx context.Context, id, username string) error {
 	return s.queries.UpdateAccountUsername(ctx, pggen.UpdateAccountUsernameParams{
 		Username: username,
 		ID:       id,
 	})
 }
 
-func (s *PostgresStore) UpdateAccountPassword(ctx context.Context, id, pwhash string) error {
+func (s *SQLStore) UpdateAccountPassword(ctx context.Context, id, pwhash string) error {
 	return s.queries.UpdateAccountPassword(ctx, pggen.UpdateAccountPasswordParams{
 		Pwhash: pwhash,
 		ID:     id,
 	})
 }
 
-func (s *PostgresStore) UpdateAccountRole(ctx context.Context, id, role string) error {
+func (s *SQLStore) UpdateAccountRole(ctx context.Context, id, role string) error {
 	return s.queries.UpdateAccountRole(ctx, pggen.UpdateAccountRoleParams{
 		Role: role,
 		ID:   id,
@@ -209,7 +212,7 @@ func (s *PostgresStore) UpdateAccountRole(ctx context.Context, id, role string) 
 
 // Users
 
-func (s *PostgresStore) GetUser(ctx context.Context, username string) (*User, error) {
+func (s *SQLStore) GetUser(ctx context.Context, username string) (*User, error) {
 	row, err := s.queries.GetUser(ctx, username)
 	if err != nil {
 		return nil, err
@@ -224,7 +227,7 @@ func (s *PostgresStore) GetUser(ctx context.Context, username string) (*User, er
 	}, nil
 }
 
-func (s *PostgresStore) CreateUser(ctx context.Context, username, pwhash, accountID string) error {
+func (s *SQLStore) CreateUser(ctx context.Context, username, pwhash, accountID string) error {
 	return s.queries.CreateUser(ctx, pggen.CreateUserParams{
 		Username:  username,
 		Pwhash:    pwhash,
@@ -232,21 +235,21 @@ func (s *PostgresStore) CreateUser(ctx context.Context, username, pwhash, accoun
 	})
 }
 
-func (s *PostgresStore) UpdateUserPassword(ctx context.Context, username, pwhash string) error {
+func (s *SQLStore) UpdateUserPassword(ctx context.Context, username, pwhash string) error {
 	return s.queries.UpdateUserPassword(ctx, pggen.UpdateUserPasswordParams{
 		Pwhash:   pwhash,
 		Username: username,
 	})
 }
 
-func (s *PostgresStore) UpdateUserLastActivity(ctx context.Context, username string, t time.Time) error {
+func (s *SQLStore) UpdateUserLastActivity(ctx context.Context, username string, t time.Time) error {
 	return s.queries.UpdateUserLastActivity(ctx, pggen.UpdateUserLastActivityParams{
 		LastActivity: sql.NullInt64{Int64: t.Unix(), Valid: true},
 		Username:     username,
 	})
 }
 
-func (s *PostgresStore) UpdateUserSession(ctx context.Context, username string, sessionID *string, now time.Time) error {
+func (s *SQLStore) UpdateUserSession(ctx context.Context, username string, sessionID *string, now time.Time) error {
 	var sessionCreated sql.NullInt64
 	if sessionID != nil {
 		sessionCreated = sql.NullInt64{Int64: now.Unix(), Valid: true}
@@ -258,7 +261,7 @@ func (s *PostgresStore) UpdateUserSession(ctx context.Context, username string, 
 	})
 }
 
-func (s *PostgresStore) GetUserBySession(ctx context.Context, sessionID string) (*User, error) {
+func (s *SQLStore) GetUserBySession(ctx context.Context, sessionID string) (*User, error) {
 	row, err := s.queries.GetUserBySession(ctx, sql.NullString{String: sessionID, Valid: true})
 	if err != nil {
 		return nil, err
@@ -273,7 +276,7 @@ func (s *PostgresStore) GetUserBySession(ctx context.Context, sessionID string) 
 	}, nil
 }
 
-func (s *PostgresStore) ListUsers(ctx context.Context) ([]User, error) {
+func (s *SQLStore) ListUsers(ctx context.Context) ([]User, error) {
 	rows, err := s.queries.ListUsers(ctx)
 	if err != nil {
 		return nil, err
@@ -288,7 +291,7 @@ func (s *PostgresStore) ListUsers(ctx context.Context) ([]User, error) {
 	return users, nil
 }
 
-func (s *PostgresStore) ListUsersByAccount(ctx context.Context, accountID string) ([]User, error) {
+func (s *SQLStore) ListUsersByAccount(ctx context.Context, accountID string) ([]User, error) {
 	rows, err := s.queries.ListUsersByAccount(ctx, accountID)
 	if err != nil {
 		return nil, err
@@ -307,7 +310,7 @@ func (s *PostgresStore) ListUsersByAccount(ctx context.Context, accountID string
 	return users, nil
 }
 
-func (s *PostgresStore) ListUsersByAccountWithStats(ctx context.Context, accountID string) ([]UserWithStats, error) {
+func (s *SQLStore) ListUsersByAccountWithStats(ctx context.Context, accountID string) ([]UserWithStats, error) {
 	rows, err := s.queries.ListUsersByAccountWithStats(ctx, accountID)
 	if err != nil {
 		return nil, err
@@ -325,22 +328,22 @@ func (s *PostgresStore) ListUsersByAccountWithStats(ctx context.Context, account
 	return users, nil
 }
 
-func (s *PostgresStore) DeleteUser(ctx context.Context, username string) error {
+func (s *SQLStore) DeleteUser(ctx context.Context, username string) error {
 	return s.queries.DeleteUser(ctx, username)
 }
 
-func (s *PostgresStore) DeleteUsersByAccount(ctx context.Context, accountID string) error {
+func (s *SQLStore) DeleteUsersByAccount(ctx context.Context, accountID string) error {
 	return s.queries.DeleteUsersByAccount(ctx, accountID)
 }
 
-func (s *PostgresStore) SetUserShareToken(ctx context.Context, username string, token *string) error {
+func (s *SQLStore) SetUserShareToken(ctx context.Context, username string, token *string) error {
 	return s.queries.UpdateUserShareToken(ctx, pggen.UpdateUserShareTokenParams{
 		ShareToken: ptrToNullString(token),
 		Username:   username,
 	})
 }
 
-func (s *PostgresStore) GetUserByShareToken(ctx context.Context, token string) (*User, error) {
+func (s *SQLStore) GetUserByShareToken(ctx context.Context, token string) (*User, error) {
 	row, err := s.queries.GetUserByShareToken(ctx, sql.NullString{String: token, Valid: true})
 	if err != nil {
 		return nil, err
@@ -354,7 +357,7 @@ func (s *PostgresStore) GetUserByShareToken(ctx context.Context, token string) (
 
 // Devices
 
-func (s *PostgresStore) ListDevices(ctx context.Context, username string) ([]Device, error) {
+func (s *SQLStore) ListDevices(ctx context.Context, username string) ([]Device, error) {
 	rows, err := s.queries.ListDevices(ctx, username)
 	if err != nil {
 		return nil, err
@@ -374,7 +377,7 @@ func (s *PostgresStore) ListDevices(ctx context.Context, username string) ([]Dev
 	return devices, nil
 }
 
-func (s *PostgresStore) UpsertDevice(ctx context.Context, username, deviceID string, dev DeviceUpdate) error {
+func (s *SQLStore) UpsertDevice(ctx context.Context, username, deviceID string, dev DeviceUpdate) error {
 	if err := s.queries.CreateDevice(ctx, pggen.CreateDeviceParams{
 		ID:       deviceID,
 		Username: username,
@@ -405,7 +408,7 @@ func (s *PostgresStore) UpsertDevice(ctx context.Context, username, deviceID str
 	return nil
 }
 
-func (s *PostgresStore) UpdateDeviceLastActivity(ctx context.Context, username, deviceID string, t time.Time) error {
+func (s *SQLStore) UpdateDeviceLastActivity(ctx context.Context, username, deviceID string, t time.Time) error {
 	return s.queries.UpdateDeviceLastActivity(ctx, pggen.UpdateDeviceLastActivityParams{
 		LastActivity: sql.NullInt64{Int64: t.Unix(), Valid: true},
 		ID:           deviceID,
@@ -413,24 +416,24 @@ func (s *PostgresStore) UpdateDeviceLastActivity(ctx context.Context, username, 
 	})
 }
 
-func (s *PostgresStore) DeleteDevice(ctx context.Context, username, deviceID string) error {
+func (s *SQLStore) DeleteDevice(ctx context.Context, username, deviceID string) error {
 	return s.queries.DeleteDevice(ctx, pggen.DeleteDeviceParams{
 		ID:       deviceID,
 		Username: username,
 	})
 }
 
-func (s *PostgresStore) DeleteAllUserDevices(ctx context.Context, username string) error {
+func (s *SQLStore) DeleteAllUserDevices(ctx context.Context, username string) error {
 	return s.queries.DeleteAllUserDevices(ctx, username)
 }
 
 // Subscriptions
 
-func (s *PostgresStore) GetSubscriptions(ctx context.Context, username string) ([]string, error) {
+func (s *SQLStore) GetSubscriptions(ctx context.Context, username string) ([]string, error) {
 	return s.queries.GetSubscriptions(ctx, username)
 }
 
-func (s *PostgresStore) GetSubscriptionChanges(ctx context.Context, username string, since int64) (*SubscriptionChanges, error) {
+func (s *SQLStore) GetSubscriptionChanges(ctx context.Context, username string, since int64) (*SubscriptionChanges, error) {
 	rows, err := s.queries.GetSubscriptionsSince(ctx, pggen.GetSubscriptionsSinceParams{
 		Username: username,
 		Created:  since,
@@ -451,7 +454,7 @@ func (s *PostgresStore) GetSubscriptionChanges(ctx context.Context, username str
 	return changes, nil
 }
 
-func (s *PostgresStore) UpdateSubscriptions(ctx context.Context, username string, add, remove []string, timestamp int64) error {
+func (s *SQLStore) UpdateSubscriptions(ctx context.Context, username string, add, remove []string, timestamp int64) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -464,7 +467,7 @@ func (s *PostgresStore) UpdateSubscriptions(ctx context.Context, username string
 	return tx.Commit()
 }
 
-func (s *PostgresStore) ReplaceSubscriptions(ctx context.Context, username string, desired []string, timestamp int64) error {
+func (s *SQLStore) ReplaceSubscriptions(ctx context.Context, username string, desired []string, timestamp int64) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -490,7 +493,7 @@ func (s *PostgresStore) ReplaceSubscriptions(ctx context.Context, username strin
 	return tx.Commit()
 }
 
-func (s *PostgresStore) applySubscriptionChanges(ctx context.Context, q *pggen.Queries, username string, add, remove []string, timestamp int64) error {
+func (s *SQLStore) applySubscriptionChanges(ctx context.Context, q *pggen.Queries, username string, add, remove []string, timestamp int64) error {
 	for _, url := range add {
 		if err := q.AddSubscription(ctx, pggen.AddSubscriptionParams{
 			Username: username,
@@ -512,7 +515,7 @@ func (s *PostgresStore) applySubscriptionChanges(ctx context.Context, q *pggen.Q
 	return nil
 }
 
-func (s *PostgresStore) ReactivateSubscription(ctx context.Context, username, url string, timestamp int64) error {
+func (s *SQLStore) ReactivateSubscription(ctx context.Context, username, url string, timestamp int64) error {
 	return s.queries.ReactivateSubscription(ctx, pggen.ReactivateSubscriptionParams{
 		Created:  timestamp,
 		Username: username,
@@ -520,13 +523,13 @@ func (s *PostgresStore) ReactivateSubscription(ctx context.Context, username, ur
 	})
 }
 
-func (s *PostgresStore) DeleteAllUserSubscriptions(ctx context.Context, username string) error {
+func (s *SQLStore) DeleteAllUserSubscriptions(ctx context.Context, username string) error {
 	return s.queries.DeleteAllUserSubscriptions(ctx, username)
 }
 
 // Episodes
 
-func (s *PostgresStore) GetEpisodes(ctx context.Context, params EpisodeQuery) ([]Episode, error) {
+func (s *SQLStore) GetEpisodes(ctx context.Context, params EpisodeQuery) ([]Episode, error) {
 	switch {
 	case params.Podcast != nil && params.Device != nil:
 		rows, err := s.queries.GetEpisodesByPodcastAndDevice(ctx, pggen.GetEpisodesByPodcastAndDeviceParams{
@@ -590,7 +593,7 @@ func (s *PostgresStore) GetEpisodes(ctx context.Context, params EpisodeQuery) ([
 	}
 }
 
-func (s *PostgresStore) UpdateEpisodes(ctx context.Context, username string, episodes []Episode, timestamp int64) error {
+func (s *SQLStore) UpdateEpisodes(ctx context.Context, username string, episodes []Episode, timestamp int64) error {
 	for i := 0; i < len(episodes); i += episodeBatchSize {
 		end := min(i+episodeBatchSize, len(episodes))
 		if err := s.upsertEpisodeBatch(ctx, username, episodes[i:end], timestamp); err != nil {
@@ -600,7 +603,7 @@ func (s *PostgresStore) UpdateEpisodes(ctx context.Context, username string, epi
 	return nil
 }
 
-func (s *PostgresStore) upsertEpisodeBatch(ctx context.Context, username string, episodes []Episode, timestamp int64) error {
+func (s *SQLStore) upsertEpisodeBatch(ctx context.Context, username string, episodes []Episode, timestamp int64) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -631,11 +634,11 @@ func (s *PostgresStore) upsertEpisodeBatch(ctx context.Context, username string,
 	return tx.Commit()
 }
 
-func (s *PostgresStore) DeleteAllUserEpisodes(ctx context.Context, username string) error {
+func (s *SQLStore) DeleteAllUserEpisodes(ctx context.Context, username string) error {
 	return s.queries.DeleteAllUserEpisodes(ctx, username)
 }
 
-func (s *PostgresStore) DeleteEpisodesOlderThan(ctx context.Context, cutoff int64) (int64, error) {
+func (s *SQLStore) DeleteEpisodesOlderThan(ctx context.Context, cutoff int64) (int64, error) {
 	result, err := s.queries.DeleteEpisodesOlderThan(ctx, cutoff)
 	if err != nil {
 		return 0, err
@@ -646,7 +649,7 @@ func (s *PostgresStore) DeleteEpisodesOlderThan(ctx context.Context, cutoff int6
 
 // API Keys
 
-func (s *PostgresStore) CreateAPIKey(ctx context.Context, key APIKey) error {
+func (s *SQLStore) CreateAPIKey(ctx context.Context, key APIKey) error {
 	return s.queries.CreateAPIKey(ctx, pggen.CreateAPIKeyParams{
 		ID:        key.ID,
 		AccountID: key.AccountID,
@@ -658,7 +661,7 @@ func (s *PostgresStore) CreateAPIKey(ctx context.Context, key APIKey) error {
 	})
 }
 
-func (s *PostgresStore) ListAPIKeysByAccount(ctx context.Context, accountID string) ([]APIKey, error) {
+func (s *SQLStore) ListAPIKeysByAccount(ctx context.Context, accountID string) ([]APIKey, error) {
 	rows, err := s.queries.ListAPIKeysByAccount(ctx, accountID)
 	if err != nil {
 		return nil, err
@@ -679,7 +682,7 @@ func (s *PostgresStore) ListAPIKeysByAccount(ctx context.Context, accountID stri
 	return keys, nil
 }
 
-func (s *PostgresStore) GetAPIKeysByPrefix(ctx context.Context, prefix string) ([]APIKey, error) {
+func (s *SQLStore) GetAPIKeysByPrefix(ctx context.Context, prefix string) ([]APIKey, error) {
 	rows, err := s.queries.GetAPIKeysByPrefix(ctx, prefix)
 	if err != nil {
 		return nil, err
@@ -701,31 +704,31 @@ func (s *PostgresStore) GetAPIKeysByPrefix(ctx context.Context, prefix string) (
 	return keys, nil
 }
 
-func (s *PostgresStore) DeleteAPIKey(ctx context.Context, id, accountID string) error {
+func (s *SQLStore) DeleteAPIKey(ctx context.Context, id, accountID string) error {
 	return s.queries.DeleteAPIKey(ctx, pggen.DeleteAPIKeyParams{
 		ID:        id,
 		AccountID: accountID,
 	})
 }
 
-func (s *PostgresStore) DeleteAPIKeysByAccount(ctx context.Context, accountID string) error {
+func (s *SQLStore) DeleteAPIKeysByAccount(ctx context.Context, accountID string) error {
 	return s.queries.DeleteAPIKeysByAccount(ctx, accountID)
 }
 
-func (s *PostgresStore) UpdateAPIKeyLastUsed(ctx context.Context, id string, t time.Time) error {
+func (s *SQLStore) UpdateAPIKeyLastUsed(ctx context.Context, id string, t time.Time) error {
 	return s.queries.UpdateAPIKeyLastUsed(ctx, pggen.UpdateAPIKeyLastUsedParams{
 		LastUsed: sql.NullInt64{Int64: t.Unix(), Valid: true},
 		ID:       id,
 	})
 }
 
-func (s *PostgresStore) CountAPIKeysByAccount(ctx context.Context, accountID string) (int64, error) {
+func (s *SQLStore) CountAPIKeysByAccount(ctx context.Context, accountID string) (int64, error) {
 	return s.queries.CountAPIKeysByAccount(ctx, accountID)
 }
 
 // Stats
 
-func (s *PostgresStore) GetStats(ctx context.Context) (Stats, error) {
+func (s *SQLStore) GetStats(ctx context.Context) (Stats, error) {
 	accounts, err := s.queries.CountAccounts(ctx)
 	if err != nil {
 		return Stats{}, err
@@ -757,11 +760,11 @@ func (s *PostgresStore) GetStats(ctx context.Context) (Stats, error) {
 
 // Settings
 
-func (s *PostgresStore) GetSetting(ctx context.Context, key string) (string, error) {
+func (s *SQLStore) GetSetting(ctx context.Context, key string) (string, error) {
 	return s.queries.GetSetting(ctx, key)
 }
 
-func (s *PostgresStore) SetSetting(ctx context.Context, key, value string) error {
+func (s *SQLStore) SetSetting(ctx context.Context, key, value string) error {
 	return s.queries.UpsertSetting(ctx, pggen.UpsertSettingParams{
 		Key:   key,
 		Value: value,

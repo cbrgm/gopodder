@@ -8,7 +8,7 @@ import (
 
 const testAccountID = "test-account-id"
 
-func newTestStore(t *testing.T) *SQLiteStore {
+func newTestStore(t *testing.T) *SQLStore {
 	t.Helper()
 	store, err := NewSQLiteStore(":memory:")
 	if err != nil {

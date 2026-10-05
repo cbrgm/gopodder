@@ -72,8 +72,8 @@ func TestOpenStore_SQLite(t *testing.T) {
 	}
 	defer func() { _ = store.Close() }()
 
-	if _, ok := store.(*SQLiteStore); !ok {
-		t.Errorf("expected *SQLiteStore, got %T", store)
+	if _, ok := store.(*SQLStore); !ok {
+		t.Errorf("expected *SQLStore, got %T", store)
 	}
 }
 
@@ -87,8 +87,8 @@ func TestOpenStore_SQLiteDefault(t *testing.T) {
 	}
 	defer func() { _ = store.Close() }()
 
-	if _, ok := store.(*SQLiteStore); !ok {
-		t.Errorf("expected *SQLiteStore when backend is empty, got %T", store)
+	if _, ok := store.(*SQLStore); !ok {
+		t.Errorf("expected *SQLStore when backend is empty, got %T", store)
 	}
 }
 

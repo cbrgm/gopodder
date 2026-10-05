@@ -1,12 +1,5 @@
 version: "2"
 sql:
-  - engine: "sqlite"
-    queries: "gopodder/sqlcgen/queries.sql"
-    schema: "gopodder/sqlcgen/schema.sql"
-    gen:
-      go:
-        package: "sqlcgen"
-        out: "gopodder/sqlcgen"
   - engine: "postgresql"
     queries: "gopodder/pggen/queries.sql"
     schema: "gopodder/pggen/schema.sql"
