@@ -841,17 +841,34 @@ func TestSQLiteStore_Episodes(t *testing.T) {
 		}
 	})
 
-	t.Run("echo without metadata does not erase existing device/timestamp when state is unchanged", func(t *testing.T) {
+	t.Run("content hash guard on echoes", func(t *testing.T) {
 		// Self-contained on its own episode: earlier subtests in this test
 		// already exercise plain position updates without a timestamp,
 		// which legitimately clears it (the state genuinely changed), so
 		// reusing ep1.mp3 here would depend on that unrelated history.
+		const echoEpisodeURL = "http://podcast1.com/ep-echo.mp3"
+
+		getEcho := func(t *testing.T) Episode {
+			t.Helper()
+			eps, err := store.GetEpisodes(ctx, EpisodeQuery{Username: "alice", Since: 0})
+			if err != nil {
+				t.Fatalf("GetEpisodes: %v", err)
+			}
+			for _, ep := range eps {
+				if ep.Episode == echoEpisodeURL {
+					return ep
+				}
+			}
+			t.Fatalf("episode %q not found", echoEpisodeURL)
+			return Episode{}
+		}
+
 		echoDevice := "antennapod"
 		echoTs := "2024-06-10T08:00:00"
 		pos := int64(300)
 		original := []Episode{{
 			Podcast:   "http://podcast1.com/feed",
-			Episode:   "http://podcast1.com/ep-echo.mp3",
+			Episode:   echoEpisodeURL,
 			Device:    &echoDevice,
 			Timestamp: &echoTs,
 			Action:    "play",
@@ -863,36 +880,62 @@ func TestSQLiteStore_Episodes(t *testing.T) {
 			t.Fatalf("UpdateEpisodes (original): %v", err)
 		}
 
-		// Simulates a second client (e.g. one that doesn't track devices)
-		// re-syncing the same playback state it pulled from this episode,
-		// without resending device/timestamp/guid.
-		echo := []Episode{{
-			Podcast:  "http://podcast1.com/feed",
-			Episode:  "http://podcast1.com/ep-echo.mp3",
-			Action:   "play",
-			Started:  &started,
-			Position: &pos,
-			Total:    &total,
-		}}
-		if err := store.UpdateEpisodes(ctx, "alice", echo, 310); err != nil {
-			t.Fatalf("UpdateEpisodes (echo): %v", err)
-		}
-
-		eps, err := store.GetEpisodes(ctx, EpisodeQuery{Username: "alice", Since: 0})
-		if err != nil {
-			t.Fatalf("GetEpisodes: %v", err)
-		}
-		for _, ep := range eps {
-			if ep.Episode != "http://podcast1.com/ep-echo.mp3" {
-				continue
+		t.Run("echo without metadata does not erase existing device/timestamp when state is unchanged", func(t *testing.T) {
+			// Simulates a second client (e.g. one that doesn't track
+			// devices) re-syncing the same playback state it pulled from
+			// this episode, without resending device/timestamp/guid.
+			echo := []Episode{{
+				Podcast:  "http://podcast1.com/feed",
+				Episode:  echoEpisodeURL,
+				Action:   "play",
+				Started:  &started,
+				Position: &pos,
+				Total:    &total,
+			}}
+			if err := store.UpdateEpisodes(ctx, "alice", echo, 310); err != nil {
+				t.Fatalf("UpdateEpisodes (echo): %v", err)
 			}
+
+			ep := getEcho(t)
 			if ep.Device == nil || *ep.Device != "antennapod" {
 				t.Errorf("device = %v, want antennapod to be preserved from the original play", ep.Device)
 			}
 			if ep.Timestamp == nil || *ep.Timestamp != "2024-06-10T08:00:00" {
 				t.Errorf("timestamp = %v, want the original timestamp to be preserved", ep.Timestamp)
 			}
-		}
+		})
+
+		t.Run("echo with the echoing client's own device/timestamp does not overwrite the original on unchanged state", func(t *testing.T) {
+			// This is the case a plain COALESCE(excluded.x, episodes.x)
+			// would get wrong: B sends non-null metadata of its own, so
+			// COALESCE would happily apply it even though the playback
+			// state (and therefore the real attribution) hasn't changed.
+			// The content-hash WHERE guard must skip the whole row
+			// instead, keeping antennapod's original data.
+			echoDevice := "pinepods"
+			echoTs := "2024-06-12T07:00:00"
+			echo := []Episode{{
+				Podcast:   "http://podcast1.com/feed",
+				Episode:   echoEpisodeURL,
+				Device:    &echoDevice,
+				Timestamp: &echoTs,
+				Action:    "play",
+				Started:   &started,
+				Position:  &pos,
+				Total:     &total,
+			}}
+			if err := store.UpdateEpisodes(ctx, "alice", echo, 320); err != nil {
+				t.Fatalf("UpdateEpisodes (echo with own metadata): %v", err)
+			}
+
+			ep := getEcho(t)
+			if ep.Device == nil || *ep.Device != "antennapod" {
+				t.Errorf("device = %v, want antennapod: an echo's own metadata must not override it when the state is unchanged", ep.Device)
+			}
+			if ep.Timestamp == nil || *ep.Timestamp != "2024-06-10T08:00:00" {
+				t.Errorf("timestamp = %v, want the original timestamp to be preserved", ep.Timestamp)
+			}
+		})
 
 		t.Run("a real new state from another device still overwrites metadata correctly", func(t *testing.T) {
 			otherDevice := "pinepods"
@@ -900,7 +943,7 @@ func TestSQLiteStore_Episodes(t *testing.T) {
 			newPosition := int64(900)
 			next := []Episode{{
 				Podcast:   "http://podcast1.com/feed",
-				Episode:   "http://podcast1.com/ep-echo.mp3",
+				Episode:   echoEpisodeURL,
 				Device:    &otherDevice,
 				Timestamp: &otherTs,
 				Action:    "play",
@@ -912,23 +955,15 @@ func TestSQLiteStore_Episodes(t *testing.T) {
 				t.Fatalf("UpdateEpisodes: %v", err)
 			}
 
-			eps, err := store.GetEpisodes(ctx, EpisodeQuery{Username: "alice", Since: 0})
-			if err != nil {
-				t.Fatalf("GetEpisodes: %v", err)
+			ep := getEcho(t)
+			if ep.Position == nil || *ep.Position != 900 {
+				t.Errorf("position = %v, want 900", ep.Position)
 			}
-			for _, ep := range eps {
-				if ep.Episode != "http://podcast1.com/ep-echo.mp3" {
-					continue
-				}
-				if ep.Position == nil || *ep.Position != 900 {
-					t.Errorf("position = %v, want 900", ep.Position)
-				}
-				if ep.Device == nil || *ep.Device != "pinepods" {
-					t.Errorf("device = %v, want pinepods (a genuinely new state must still update attribution)", ep.Device)
-				}
-				if ep.Timestamp == nil || *ep.Timestamp != "2024-06-11T09:00:00" {
-					t.Errorf("timestamp = %v, want the new timestamp", ep.Timestamp)
-				}
+			if ep.Device == nil || *ep.Device != "pinepods" {
+				t.Errorf("device = %v, want pinepods (a genuinely new state must still update attribution)", ep.Device)
+			}
+			if ep.Timestamp == nil || *ep.Timestamp != "2024-06-11T09:00:00" {
+				t.Errorf("timestamp = %v, want the new timestamp", ep.Timestamp)
 			}
 		})
 	})
