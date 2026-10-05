@@ -214,11 +214,11 @@ No. Most apps (AntennaPod, gPodder desktop) pull the server's data first, merge 
 
 **What if I want my phone to overwrite everything?**
 
-Some apps have a "force upload" option that replaces the server's subscription list entirely. That will wipe any subscriptions that only existed on your other devices. It's there if you need it, but check your app's sync settings before you hit it. Episode actions are append-only, so those always merge.
+Some apps have a "force upload" option that replaces the server's subscription list entirely. That will wipe any subscriptions that only existed on your other devices. It's there if you need it, but check your app's sync settings before you hit it. Episode actions aren't affected by this.
 
 **What decides what happens during sync, the server or the app?**
 
-The app. goPodder just stores what gets sent and serves it back. It doesn't pick a merge strategy, doesn't resolve conflicts, doesn't reorder anything. Subscription adds are added, removes are removed. Episode actions are recorded as-is.
+The app. goPodder just stores what gets sent and serves it back. It doesn't pick a merge strategy, doesn't resolve conflicts, doesn't reorder anything. Subscription adds are added, removes are removed. Episode actions are stored as the latest state per episode: a new playback state replaces the old one, re-sending an unchanged state is ignored.
 
 **Does goPodder fetch my feeds or phone home?**
 
