@@ -666,7 +666,7 @@ func TestUserLimitReached(t *testing.T) {
 	h := NewWebHandler(api)
 
 	t.Run("no limit set means unlimited", func(t *testing.T) {
-		if h.userLimitReached(t.Context(), "admin-id") {
+		if userLimitReached(t.Context(), h.store, "admin-id") {
 			t.Error("expected false when no limit is set")
 		}
 	})
@@ -675,28 +675,28 @@ func TestUserLimitReached(t *testing.T) {
 		store.settings[SettingMaxUsersPerAccount] = "0"
 		store.users["u1"] = &User{Username: "u1", AccountID: "admin-id"}
 		store.users["u2"] = &User{Username: "u2", AccountID: "admin-id"}
-		if h.userLimitReached(t.Context(), "admin-id") {
+		if userLimitReached(t.Context(), h.store, "admin-id") {
 			t.Error("expected false when limit is 0 (unlimited)")
 		}
 	})
 
 	t.Run("under limit", func(t *testing.T) {
 		store.settings[SettingMaxUsersPerAccount] = "3"
-		if h.userLimitReached(t.Context(), "admin-id") {
+		if userLimitReached(t.Context(), h.store, "admin-id") {
 			t.Error("expected false when under limit (2 < 3)")
 		}
 	})
 
 	t.Run("at limit", func(t *testing.T) {
 		store.settings[SettingMaxUsersPerAccount] = "2"
-		if !h.userLimitReached(t.Context(), "admin-id") {
+		if !userLimitReached(t.Context(), h.store, "admin-id") {
 			t.Error("expected true when at limit (2 >= 2)")
 		}
 	})
 
 	t.Run("over limit", func(t *testing.T) {
 		store.settings[SettingMaxUsersPerAccount] = "1"
-		if !h.userLimitReached(t.Context(), "admin-id") {
+		if !userLimitReached(t.Context(), h.store, "admin-id") {
 			t.Error("expected true when over limit (2 >= 1)")
 		}
 	})
@@ -706,7 +706,7 @@ func TestUserLimitReached(t *testing.T) {
 		store.accounts["other-id"] = &Account{ID: "other-id", Username: "other", Role: RoleStandard}
 		store.users["u3"] = &User{Username: "u3", AccountID: "other-id"}
 		// other-id has 1 user, limit is 2
-		if h.userLimitReached(t.Context(), "other-id") {
+		if userLimitReached(t.Context(), h.store, "other-id") {
 			t.Error("expected false for other account (1 < 2)")
 		}
 	})

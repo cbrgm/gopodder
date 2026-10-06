@@ -222,7 +222,7 @@ func (h *WebHandler) handleLoginSubmit(w http.ResponseWriter, r *http.Request) {
 	// Best effort: a lost login timestamp must not fail the login itself.
 	_ = h.store.UpdateAccountLastLogin(r.Context(), acct.ID, time.Now())
 
-	maxAge := cmp.Or(h.getSettingInt(r.Context(), SettingSessionMaxAge), defaultSessionMaxAgeHours)
+	maxAge := cmp.Or(settingInt(r.Context(), h.store, SettingSessionMaxAge), defaultSessionMaxAgeHours)
 	http.SetCookie(w, &http.Cookie{
 		Name:     "web_session",
 		Value:    sessionID,
@@ -326,7 +326,7 @@ func (h *WebHandler) handleSelfDeleteAccount(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	h.deleteAccountCascade(r.Context(), acct.ID)
+	deleteAccountCascade(r.Context(), h.store, acct.ID)
 	h.logger.Info("account self-deleted", "username", acct.Username)
 	http.SetCookie(w, &http.Cookie{
 		Name:   "web_session",
@@ -348,7 +348,7 @@ func (h *WebHandler) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if acct.Role != RoleAdmin {
-		maxKeys := cmp.Or(h.getSettingInt(r.Context(), SettingMaxAPIKeys), defaultMaxAPIKeys)
+		maxKeys := cmp.Or(settingInt(r.Context(), h.store, SettingMaxAPIKeys), defaultMaxAPIKeys)
 		count, _ := h.store.CountAPIKeysByAccount(r.Context(), acct.ID)
 		if count >= maxKeys {
 			http.Redirect(w, r, "/account?error=Maximum+number+of+API+keys+reached.", http.StatusSeeOther)
@@ -454,7 +454,7 @@ func (h *WebHandler) handleSelfCreateUser(w http.ResponseWriter, r *http.Request
 		http.Redirect(w, r, "/users?error=User+creation+is+disabled.", http.StatusSeeOther)
 		return
 	}
-	if h.userLimitReached(r.Context(), acct.ID) {
+	if userLimitReached(r.Context(), h.store, acct.ID) {
 		http.Redirect(w, r, "/users?error=User+limit+reached.+Cannot+create+more+users.", http.StatusSeeOther)
 		return
 	}
@@ -492,7 +492,7 @@ func (h *WebHandler) handleSelfDeleteUser(w http.ResponseWriter, r *http.Request
 		return
 	}
 	acct := webAccountFromContext(r.Context())
-	h.deleteUserCascade(r.Context(), username)
+	deleteUserCascade(r.Context(), h.store, username)
 	h.logger.Info("gpodder user deleted", "username", username, "account", acct.Username)
 	http.Redirect(w, r, "/users?flash=User+deleted.", http.StatusSeeOther)
 }
@@ -631,14 +631,6 @@ func (h *WebHandler) disableSharing(w http.ResponseWriter, r *http.Request, user
 		return
 	}
 	http.Redirect(w, r, page+"?flash=Sharing+disabled.", http.StatusSeeOther)
-}
-
-func (h *WebHandler) deleteUserCascade(ctx context.Context, username string) {
-	deleteUserCascade(ctx, h.store, username)
-}
-
-func (h *WebHandler) deleteAccountCascade(ctx context.Context, accountID string) {
-	deleteAccountCascade(ctx, h.store, accountID)
 }
 
 func deleteUserCascade(ctx context.Context, store Store, username string) {
@@ -903,7 +895,7 @@ func (h *WebHandler) handleDeleteAccount(w http.ResponseWriter, r *http.Request)
 	}
 
 	acct, _ := h.store.GetAccountByID(r.Context(), id)
-	h.deleteAccountCascade(r.Context(), id)
+	deleteAccountCascade(r.Context(), h.store, id)
 	username := ""
 	if acct != nil {
 		username = acct.Username
@@ -957,7 +949,7 @@ func (h *WebHandler) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/admin/accounts/"+accountID+"?error="+msg, http.StatusSeeOther)
 		return
 	}
-	if h.userLimitReached(r.Context(), accountID) {
+	if userLimitReached(r.Context(), h.store, accountID) {
 		http.Redirect(w, r, "/admin/accounts/"+accountID+"?error=User+limit+reached.+Cannot+create+more+users.", http.StatusSeeOther)
 		return
 	}
@@ -977,7 +969,7 @@ func (h *WebHandler) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 func (h *WebHandler) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 	accountID := r.PathValue("id")
 	username := r.PathValue("username")
-	h.deleteUserCascade(r.Context(), username)
+	deleteUserCascade(r.Context(), h.store, username)
 	h.logger.Info("gpodder user deleted by admin", "username", username, "account_id", accountID)
 	http.Redirect(w, r, "/admin/accounts/"+accountID, http.StatusSeeOther)
 }
@@ -1040,8 +1032,8 @@ func (h *WebHandler) handleRegisterSubmit(w http.ResponseWriter, r *http.Request
 
 func (h *WebHandler) handleSettingsPage(w http.ResponseWriter, r *http.Request) {
 	acct := webAccountFromContext(r.Context())
-	sessionMaxAge := cmp.Or(h.getSettingInt(r.Context(), SettingSessionMaxAge), defaultSessionMaxAgeHours)
-	episodeRetention := cmp.Or(h.getSettingInt(r.Context(), SettingEpisodeRetention), defaultEpisodeRetentionDays)
+	sessionMaxAge := cmp.Or(settingInt(r.Context(), h.store, SettingSessionMaxAge), defaultSessionMaxAgeHours)
+	episodeRetention := cmp.Or(settingInt(r.Context(), h.store, SettingEpisodeRetention), defaultEpisodeRetentionDays)
 	data := web.SettingsPageData{
 		Account:             acct.Username,
 		Flash:               r.URL.Query().Get("flash"),
@@ -1050,12 +1042,12 @@ func (h *WebHandler) handleSettingsPage(w http.ResponseWriter, r *http.Request) 
 		AllowUserCreation:   h.isSettingEnabled(r.Context(), SettingAllowUserCreation),
 		AllowSharing:        h.isSettingEnabled(r.Context(), SettingAllowSharing),
 		AllowAPIKeys:        h.isSettingEnabled(r.Context(), SettingAllowAPIKeys),
-		MaxUsersPerAccount:  h.getSettingInt(r.Context(), SettingMaxUsersPerAccount),
-		MaxAPIKeys:          cmp.Or(h.getSettingInt(r.Context(), SettingMaxAPIKeys), defaultMaxAPIKeys),
-		MinPasswordLength:   h.getSettingInt(r.Context(), SettingMinPasswordLength),
+		MaxUsersPerAccount:  settingInt(r.Context(), h.store, SettingMaxUsersPerAccount),
+		MaxAPIKeys:          cmp.Or(settingInt(r.Context(), h.store, SettingMaxAPIKeys), defaultMaxAPIKeys),
+		MinPasswordLength:   settingInt(r.Context(), h.store, SettingMinPasswordLength),
 		SessionMaxAge:       sessionMaxAge,
 		EpisodeRetention:    episodeRetention,
-		InactiveAccountDays: h.getSettingInt(r.Context(), SettingInactiveAccountDays),
+		InactiveAccountDays: settingInt(r.Context(), h.store, SettingInactiveAccountDays),
 	}
 	_ = web.SettingsPage(data).Render(r.Context(), w)
 }
@@ -1149,10 +1141,6 @@ func (h *WebHandler) isSettingEnabled(ctx context.Context, key string) bool {
 	return val == "true"
 }
 
-func (h *WebHandler) getSettingInt(ctx context.Context, key string) int64 {
-	return settingInt(ctx, h.store, key)
-}
-
 func (h *WebHandler) checkPasswordLength(ctx context.Context, password string) string {
 	minLen := minPasswordLength(ctx, h.store)
 	if int64(len(password)) < minLen {
@@ -1177,10 +1165,6 @@ func (h *WebHandler) hashNewPassword(ctx context.Context, password string) (hash
 		return "", "Failed to process password."
 	}
 	return hash, ""
-}
-
-func (h *WebHandler) userLimitReached(ctx context.Context, accountID string) bool {
-	return userLimitReached(ctx, h.store, accountID)
 }
 
 // OPML
@@ -1425,7 +1409,7 @@ func (h *WebHandler) sessionExpired(ctx context.Context, sessionCreated *time.Ti
 	if sessionCreated == nil {
 		return false
 	}
-	maxAge := cmp.Or(h.getSettingInt(ctx, SettingSessionMaxAge), defaultSessionMaxAgeHours)
+	maxAge := cmp.Or(settingInt(ctx, h.store, SettingSessionMaxAge), defaultSessionMaxAgeHours)
 	return time.Since(*sessionCreated) > time.Duration(maxAge)*time.Hour
 }
 
