@@ -20,7 +20,7 @@ func isValidFeedURL(s string) bool {
 	if err != nil {
 		return false
 	}
-	return u.Scheme == "http" || u.Scheme == "https"
+	return (u.Scheme == "http" || u.Scheme == "https") && u.Hostname() != ""
 }
 
 func filterValidURLs(urls []string) []string {
