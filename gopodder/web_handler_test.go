@@ -404,21 +404,21 @@ func TestIsSettingEnabled(t *testing.T) {
 	h := NewWebHandler(api)
 
 	t.Run("returns false when setting does not exist", func(t *testing.T) {
-		if h.isSettingEnabled(t.Context(), SettingSelfRegistration) {
+		if settingEnabled(t.Context(), h.store, SettingSelfRegistration) {
 			t.Error("expected false for nonexistent setting")
 		}
 	})
 
 	t.Run("returns false when setting is false", func(t *testing.T) {
 		store.settings[SettingSelfRegistration] = "false"
-		if h.isSettingEnabled(t.Context(), SettingSelfRegistration) {
+		if settingEnabled(t.Context(), h.store, SettingSelfRegistration) {
 			t.Error("expected false for disabled setting")
 		}
 	})
 
 	t.Run("returns true when setting is true", func(t *testing.T) {
 		store.settings[SettingSelfRegistration] = "true"
-		if !h.isSettingEnabled(t.Context(), SettingSelfRegistration) {
+		if !settingEnabled(t.Context(), h.store, SettingSelfRegistration) {
 			t.Error("expected true for enabled setting")
 		}
 	})
@@ -666,7 +666,7 @@ func TestUserLimitReached(t *testing.T) {
 	h := NewWebHandler(api)
 
 	t.Run("no limit set means unlimited", func(t *testing.T) {
-		if h.userLimitReached(t.Context(), "admin-id") {
+		if userLimitReached(t.Context(), h.store, "admin-id") {
 			t.Error("expected false when no limit is set")
 		}
 	})
@@ -675,28 +675,28 @@ func TestUserLimitReached(t *testing.T) {
 		store.settings[SettingMaxUsersPerAccount] = "0"
 		store.users["u1"] = &User{Username: "u1", AccountID: "admin-id"}
 		store.users["u2"] = &User{Username: "u2", AccountID: "admin-id"}
-		if h.userLimitReached(t.Context(), "admin-id") {
+		if userLimitReached(t.Context(), h.store, "admin-id") {
 			t.Error("expected false when limit is 0 (unlimited)")
 		}
 	})
 
 	t.Run("under limit", func(t *testing.T) {
 		store.settings[SettingMaxUsersPerAccount] = "3"
-		if h.userLimitReached(t.Context(), "admin-id") {
+		if userLimitReached(t.Context(), h.store, "admin-id") {
 			t.Error("expected false when under limit (2 < 3)")
 		}
 	})
 
 	t.Run("at limit", func(t *testing.T) {
 		store.settings[SettingMaxUsersPerAccount] = "2"
-		if !h.userLimitReached(t.Context(), "admin-id") {
+		if !userLimitReached(t.Context(), h.store, "admin-id") {
 			t.Error("expected true when at limit (2 >= 2)")
 		}
 	})
 
 	t.Run("over limit", func(t *testing.T) {
 		store.settings[SettingMaxUsersPerAccount] = "1"
-		if !h.userLimitReached(t.Context(), "admin-id") {
+		if !userLimitReached(t.Context(), h.store, "admin-id") {
 			t.Error("expected true when over limit (2 >= 1)")
 		}
 	})
@@ -706,7 +706,7 @@ func TestUserLimitReached(t *testing.T) {
 		store.accounts["other-id"] = &Account{ID: "other-id", Username: "other", Role: RoleStandard}
 		store.users["u3"] = &User{Username: "u3", AccountID: "other-id"}
 		// other-id has 1 user, limit is 2
-		if h.userLimitReached(t.Context(), "other-id") {
+		if userLimitReached(t.Context(), h.store, "other-id") {
 			t.Error("expected false for other account (1 < 2)")
 		}
 	})
@@ -1774,6 +1774,121 @@ func TestHandlePublicRSS(t *testing.T) {
 
 		if w.Code != http.StatusNotFound {
 			t.Errorf("status = %d, want %d", w.Code, http.StatusNotFound)
+		}
+	})
+}
+
+// Every per-user action exists twice: under /users/{username} for the owning
+// account and under /admin/accounts/{id}/users/{username} for admins. The self
+// routes must only ever touch users of the logged-in account.
+func TestUserActions_SelfAndAdminRoutes(t *testing.T) {
+	opml := `<opml version="2.0"><body><outline type="rss" xmlUrl="http://c.com/feed"/></body></opml>`
+	actions := []struct {
+		name, suffix, body string
+		multipart          bool
+		deletesUser        bool
+	}{
+		{name: "change password", suffix: "/password", body: "password=newpass123&password2=newpass123"},
+		{name: "delete device", suffix: "/devices/dev1/delete"},
+		{name: "delete subscriptions", suffix: "/subscriptions/delete"},
+		{name: "delete one subscription", suffix: "/subscriptions/delete-one", body: "url=http://a.com/feed"},
+		{name: "add subscription", suffix: "/subscriptions/add", body: "url=https://b.com/feed"},
+		{name: "import opml", suffix: "/subscriptions/import", multipart: true},
+		{name: "enable sharing", suffix: "/sharing/enable"},
+		{name: "disable sharing", suffix: "/sharing/disable"},
+		{name: "delete user", suffix: "/delete", deletesUser: true},
+	}
+
+	newEnv := func() (*mockStore, http.Handler) {
+		adminSID, userSID, token := "admin-session", "user-session", "tok"
+		ms := newMockStore()
+		h := newTestAPI(ms).Handler()
+		ms.accounts["admin-id"].SessionID = &adminSID
+		ms.accounts["u1"] = &Account{ID: "u1", Username: "user1", Role: RoleStandard, SessionID: &userSID}
+		for _, u := range []struct{ name, acct string }{{"mine", "u1"}, {"theirs", "other"}} {
+			ms.users[u.name] = &User{Username: u.name, PWHash: "orig", AccountID: u.acct, ShareToken: &token}
+			ms.subscriptions[u.name] = []string{"http://a.com/feed"}
+			ms.devices[u.name] = []Device{{ID: "dev1"}}
+		}
+		ms.settings[SettingAllowSharing] = "true"
+		return ms, h
+	}
+	state := func(ms *mockStore, username string) string {
+		u, ok := ms.users[username]
+		if !ok {
+			return "deleted"
+		}
+		return fmt.Sprintf("%s|%v|%v|%v", u.PWHash, ptrStringOr(u.ShareToken, "<nil>"), ms.subscriptions[username], ms.devices[username])
+	}
+	post := func(h http.Handler, sid, path string, a struct {
+		name, suffix, body string
+		multipart          bool
+		deletesUser        bool
+	}) string {
+		var r *http.Request
+		if a.multipart {
+			body, ct := createMultipartFileWithCSRF(t, "file", "subs.opml", opml, sid, "")
+			r = httptest.NewRequest(http.MethodPost, path, body)
+			r.Header.Set("Content-Type", ct)
+		} else {
+			r = httptest.NewRequest(http.MethodPost, path, strings.NewReader(withCSRF(sid, a.body)))
+			r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		}
+		r.AddCookie(&http.Cookie{Name: "web_session", Value: sid})
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w.Header().Get("Location")
+	}
+
+	for _, a := range actions {
+		t.Run(a.name+"/self on other account's user is rejected", func(t *testing.T) {
+			ms, h := newEnv()
+			before := state(ms, "theirs")
+			if loc := post(h, "user-session", "/users/theirs"+a.suffix, a); loc != "/users" {
+				t.Errorf("Location = %q, want /users", loc)
+			}
+			if after := state(ms, "theirs"); after != before {
+				t.Errorf("other account's user changed: %s -> %s", before, after)
+			}
+		})
+		t.Run(a.name+"/self on own user", func(t *testing.T) {
+			ms, h := newEnv()
+			before := state(ms, "mine")
+			want := "/users/mine"
+			if a.deletesUser {
+				want = "/users?"
+			}
+			if loc := post(h, "user-session", "/users/mine"+a.suffix, a); !strings.HasPrefix(loc, want) || strings.Contains(loc, "error=") {
+				t.Errorf("Location = %q, want prefix %q without error", loc, want)
+			}
+			if state(ms, "mine") == before {
+				t.Errorf("own user unchanged: %s", before)
+			}
+		})
+		t.Run(a.name+"/admin on any user", func(t *testing.T) {
+			ms, h := newEnv()
+			before := state(ms, "theirs")
+			want := "/admin/accounts/other/users/theirs"
+			if a.deletesUser {
+				want = "/admin/accounts/other"
+			}
+			if loc := post(h, "admin-session", "/admin/accounts/other/users/theirs"+a.suffix, a); !strings.HasPrefix(loc, want) || strings.Contains(loc, "error=") {
+				t.Errorf("Location = %q, want prefix %q without error", loc, want)
+			}
+			if state(ms, "theirs") == before {
+				t.Errorf("user unchanged: %s", before)
+			}
+		})
+	}
+
+	t.Run("detail page/self on other account's user is rejected", func(t *testing.T) {
+		_, h := newEnv()
+		r := httptest.NewRequest(http.MethodGet, "/users/theirs", nil)
+		r.AddCookie(&http.Cookie{Name: "web_session", Value: "user-session"})
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if loc := w.Header().Get("Location"); loc != "/users" {
+			t.Errorf("Location = %q, want /users", loc)
 		}
 	})
 }

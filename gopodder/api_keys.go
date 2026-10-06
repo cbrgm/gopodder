@@ -173,7 +173,7 @@ func (a *API) handleAPICreateUser(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, msg)
 		return
 	}
-	if !a.userCreationAllowed(r.Context(), acct) {
+	if acct.Role != RoleAdmin && !settingEnabled(r.Context(), a.store, SettingAllowUserCreation) {
 		writeJSONError(w, http.StatusForbidden, "user creation is disabled")
 		return
 	}
@@ -197,17 +197,6 @@ func (a *API) handleAPICreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]string{"username": req.Username})
-}
-
-func (a *API) userCreationAllowed(ctx context.Context, acct *Account) bool {
-	if acct.Role == RoleAdmin {
-		return true
-	}
-	val, err := a.store.GetSetting(ctx, SettingAllowUserCreation)
-	if err != nil {
-		return true
-	}
-	return val == "true"
 }
 
 func (a *API) checkPasswordLength(ctx context.Context, password string) string {

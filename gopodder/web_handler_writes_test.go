@@ -33,6 +33,13 @@ func (f *failingStore) UpdateAccountPassword(ctx context.Context, id, pwhash str
 	return f.Store.UpdateAccountPassword(ctx, id, pwhash)
 }
 
+func (f *failingStore) UpdateUserPassword(ctx context.Context, username, pwhash string) error {
+	if err := f.fails("UpdateUserPassword"); err != nil {
+		return err
+	}
+	return f.Store.UpdateUserPassword(ctx, username, pwhash)
+}
+
 func (f *failingStore) DeleteAPIKey(ctx context.Context, id, accountID string) error {
 	if err := f.fails("DeleteAPIKey"); err != nil {
 		return err
@@ -101,6 +108,7 @@ func TestFailedWriteIsReportedNotSwallowed(t *testing.T) {
 		body   string
 	}{
 		{"change own password", "UpdateAccountPassword", "/account/password", "current_password=admin&password=newpass123&password2=newpass123"},
+		{"change sync login password", "UpdateUserPassword", "/users/user1/password", "password=newpass123&password2=newpass123"},
 		{"revoke api key", "DeleteAPIKey", "/account/keys/key1/delete", ""},
 		{"disable sharing", "SetUserShareToken", "/users/user1/sharing/disable", ""},
 		{"enable sharing", "SetUserShareToken", "/users/user1/sharing/enable", ""},
