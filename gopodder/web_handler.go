@@ -80,15 +80,15 @@ func (h *WebHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /users", h.withSession(h.handleSelfUsersPage))
 	mux.HandleFunc("POST /users", h.withSession(h.handleSelfCreateUser))
 	mux.HandleFunc("GET /users/{username}", h.withSession(h.handleSelfUserDetail))
-	mux.HandleFunc("POST /users/{username}/password", h.withSession(h.handleSelfChangeUserPassword))
+	mux.HandleFunc("POST /users/{username}/password", h.forOwnUser(h.changeUserPassword))
 	mux.HandleFunc("POST /users/{username}/delete", h.withSession(h.handleSelfDeleteUser))
-	mux.HandleFunc("POST /users/{username}/devices/{device}/delete", h.withSession(h.handleSelfDeleteDevice))
-	mux.HandleFunc("POST /users/{username}/subscriptions/delete", h.withSession(h.handleSelfDeleteSubscriptions))
-	mux.HandleFunc("POST /users/{username}/subscriptions/delete-one", h.withSession(h.handleSelfDeleteSubscription))
-	mux.HandleFunc("POST /users/{username}/subscriptions/add", h.withSession(h.handleSelfAddSubscription))
-	mux.HandleFunc("POST /users/{username}/subscriptions/import", h.withSession(h.handleSelfImportOPML))
-	mux.HandleFunc("POST /users/{username}/sharing/enable", h.withSession(h.handleSelfEnableSharing))
-	mux.HandleFunc("POST /users/{username}/sharing/disable", h.withSession(h.handleSelfDisableSharing))
+	mux.HandleFunc("POST /users/{username}/devices/{device}/delete", h.forOwnUser(h.deleteUserDevice))
+	mux.HandleFunc("POST /users/{username}/subscriptions/delete", h.forOwnUser(h.deleteAllSubscriptions))
+	mux.HandleFunc("POST /users/{username}/subscriptions/delete-one", h.forOwnUser(h.deleteOneSubscription))
+	mux.HandleFunc("POST /users/{username}/subscriptions/add", h.forOwnUser(h.subscribe))
+	mux.HandleFunc("POST /users/{username}/subscriptions/import", h.forOwnUser(h.importSubscriptions))
+	mux.HandleFunc("POST /users/{username}/sharing/enable", h.forOwnUser(h.enableSharing))
+	mux.HandleFunc("POST /users/{username}/sharing/disable", h.forOwnUser(h.disableSharing))
 
 	// Admin: Accounts
 	mux.HandleFunc("GET /admin/accounts", h.withAdmin(h.handleAccountsPage))
@@ -102,15 +102,15 @@ func (h *WebHandler) RegisterRoutes(mux *http.ServeMux) {
 	// Admin: gPodder Users (under account)
 	mux.HandleFunc("POST /admin/accounts/{id}/users", h.withAdmin(h.handleCreateUser))
 	mux.HandleFunc("GET /admin/accounts/{id}/users/{username}", h.withAdmin(h.handleUserDetail))
-	mux.HandleFunc("POST /admin/accounts/{id}/users/{username}/password", h.withAdmin(h.handleChangeUserPassword))
+	mux.HandleFunc("POST /admin/accounts/{id}/users/{username}/password", h.forAnyUser(h.changeUserPassword))
 	mux.HandleFunc("POST /admin/accounts/{id}/users/{username}/delete", h.withAdmin(h.handleDeleteUser))
-	mux.HandleFunc("POST /admin/accounts/{id}/users/{username}/devices/{device}/delete", h.withAdmin(h.handleDeleteDevice))
-	mux.HandleFunc("POST /admin/accounts/{id}/users/{username}/subscriptions/delete", h.withAdmin(h.handleDeleteSubscriptions))
-	mux.HandleFunc("POST /admin/accounts/{id}/users/{username}/subscriptions/delete-one", h.withAdmin(h.handleDeleteSingleSubscription))
-	mux.HandleFunc("POST /admin/accounts/{id}/users/{username}/subscriptions/add", h.withAdmin(h.handleAdminAddSubscription))
-	mux.HandleFunc("POST /admin/accounts/{id}/users/{username}/subscriptions/import", h.withAdmin(h.handleAdminImportOPML))
-	mux.HandleFunc("POST /admin/accounts/{id}/users/{username}/sharing/enable", h.withAdmin(h.handleAdminEnableSharing))
-	mux.HandleFunc("POST /admin/accounts/{id}/users/{username}/sharing/disable", h.withAdmin(h.handleAdminDisableSharing))
+	mux.HandleFunc("POST /admin/accounts/{id}/users/{username}/devices/{device}/delete", h.forAnyUser(h.deleteUserDevice))
+	mux.HandleFunc("POST /admin/accounts/{id}/users/{username}/subscriptions/delete", h.forAnyUser(h.deleteAllSubscriptions))
+	mux.HandleFunc("POST /admin/accounts/{id}/users/{username}/subscriptions/delete-one", h.forAnyUser(h.deleteOneSubscription))
+	mux.HandleFunc("POST /admin/accounts/{id}/users/{username}/subscriptions/add", h.forAnyUser(h.subscribe))
+	mux.HandleFunc("POST /admin/accounts/{id}/users/{username}/subscriptions/import", h.forAnyUser(h.importSubscriptions))
+	mux.HandleFunc("POST /admin/accounts/{id}/users/{username}/sharing/enable", h.forAnyUser(h.enableSharing))
+	mux.HandleFunc("POST /admin/accounts/{id}/users/{username}/sharing/disable", h.forAnyUser(h.disableSharing))
 
 	// Admin: Settings
 	mux.HandleFunc("GET /admin/settings", h.withAdmin(h.handleSettingsPage))
@@ -486,29 +486,6 @@ func (h *WebHandler) handleSelfCreateUser(w http.ResponseWriter, r *http.Request
 	http.Redirect(w, r, "/users?flash=User+created.", http.StatusSeeOther)
 }
 
-func (h *WebHandler) handleSelfChangeUserPassword(w http.ResponseWriter, r *http.Request) {
-	username, ok := h.requireOwnUser(w, r)
-	if !ok {
-		return
-	}
-
-	password := r.FormValue("password")
-	password2 := r.FormValue("password2")
-	if password == "" || password != password2 {
-		http.Redirect(w, r, "/users/"+username+"?error=Passwords+do+not+match.", http.StatusSeeOther)
-		return
-	}
-	pwhash, msg := h.hashNewPassword(r.Context(), password)
-	if msg != "" {
-		http.Redirect(w, r, "/users/"+username+"?error="+msg, http.StatusSeeOther)
-		return
-	}
-	if err := h.store.UpdateUserPassword(r.Context(), username, pwhash); err != nil {
-		h.logger.Error("failed to update gpodder user password", "err", err, "username", username)
-	}
-	http.Redirect(w, r, "/users/"+username+"?flash=Password+updated.", http.StatusSeeOther)
-}
-
 func (h *WebHandler) handleSelfDeleteUser(w http.ResponseWriter, r *http.Request) {
 	username, ok := h.requireOwnUser(w, r)
 	if !ok {
@@ -518,67 +495,6 @@ func (h *WebHandler) handleSelfDeleteUser(w http.ResponseWriter, r *http.Request
 	h.deleteUserCascade(r.Context(), username)
 	h.logger.Info("gpodder user deleted", "username", username, "account", acct.Username)
 	http.Redirect(w, r, "/users?flash=User+deleted.", http.StatusSeeOther)
-}
-
-func (h *WebHandler) handleSelfDeleteDevice(w http.ResponseWriter, r *http.Request) {
-	username, ok := h.requireOwnUser(w, r)
-	if !ok {
-		return
-	}
-	if h.writeFailed(w, r, h.store.DeleteDevice(r.Context(), username, r.PathValue("device")), "DeleteDevice", "/users/"+username) {
-		return
-	}
-	http.Redirect(w, r, "/users/"+username, http.StatusSeeOther)
-}
-
-func (h *WebHandler) handleSelfDeleteSubscriptions(w http.ResponseWriter, r *http.Request) {
-	username, ok := h.requireOwnUser(w, r)
-	if !ok {
-		return
-	}
-	subs, _ := h.store.GetSubscriptions(r.Context(), username)
-	if len(subs) > 0 && h.writeFailed(w, r, h.store.UpdateSubscriptions(r.Context(), username, nil, subs, time.Now().Unix()), "UpdateSubscriptions", "/users/"+username) {
-		return
-	}
-	http.Redirect(w, r, "/users/"+username, http.StatusSeeOther)
-}
-
-func (h *WebHandler) handleSelfDeleteSubscription(w http.ResponseWriter, r *http.Request) {
-	username, ok := h.requireOwnUser(w, r)
-	if !ok {
-		return
-	}
-	if h.writeFailed(w, r, h.deleteSubscription(r.Context(), username, r.FormValue("url")), "UpdateSubscriptions", "/users/"+username) {
-		return
-	}
-	http.Redirect(w, r, "/users/"+username, http.StatusSeeOther)
-}
-
-func (h *WebHandler) handleSelfAddSubscription(w http.ResponseWriter, r *http.Request) {
-	username, ok := h.requireOwnUser(w, r)
-	if !ok {
-		return
-	}
-	redirect := "/users/" + username
-	if err := h.addSubscription(r.Context(), username, r); err != "" {
-		http.Redirect(w, r, redirect+"?error="+err, http.StatusSeeOther)
-		return
-	}
-	http.Redirect(w, r, redirect+"?flash=Subscribed+to+feed.", http.StatusSeeOther)
-}
-
-func (h *WebHandler) handleSelfImportOPML(w http.ResponseWriter, r *http.Request) {
-	username, ok := h.requireOwnUser(w, r)
-	if !ok {
-		return
-	}
-	redirect := "/users/" + username
-	n, errMsg := h.importOPML(r.Context(), username, r)
-	if errMsg != "" {
-		http.Redirect(w, r, redirect+"?error="+errMsg, http.StatusSeeOther)
-		return
-	}
-	http.Redirect(w, r, redirect+"?flash=Imported+"+fmt.Sprint(n)+"+subscriptions.", http.StatusSeeOther)
 }
 
 func (h *WebHandler) userBelongsToAccount(ctx context.Context, username, accountID string) bool {
@@ -597,6 +513,124 @@ func (h *WebHandler) requireOwnUser(w http.ResponseWriter, r *http.Request) (use
 		return "", false
 	}
 	return username, true
+}
+
+// userAction acts on one gpodder user. Each action is served twice: for the
+// logged-in account's own users and, by admins, for any user. page is the
+// user's detail page to redirect back to.
+type userAction func(w http.ResponseWriter, r *http.Request, username, page string)
+
+func (h *WebHandler) forOwnUser(action userAction) http.HandlerFunc {
+	return h.withSession(func(w http.ResponseWriter, r *http.Request) {
+		username, ok := h.requireOwnUser(w, r)
+		if !ok {
+			return
+		}
+		action(w, r, username, "/users/"+username)
+	})
+}
+
+func (h *WebHandler) forAnyUser(action userAction) http.HandlerFunc {
+	return h.withAdmin(func(w http.ResponseWriter, r *http.Request) {
+		username := r.PathValue("username")
+		action(w, r, username, "/admin/accounts/"+r.PathValue("id")+"/users/"+username)
+	})
+}
+
+func (h *WebHandler) changeUserPassword(w http.ResponseWriter, r *http.Request, username, page string) {
+	password := r.FormValue("password")
+	if password == "" || password != r.FormValue("password2") {
+		http.Redirect(w, r, page+"?error=Passwords+do+not+match.", http.StatusSeeOther)
+		return
+	}
+	pwhash, msg := h.hashNewPassword(r.Context(), password)
+	if msg != "" {
+		http.Redirect(w, r, page+"?error="+msg, http.StatusSeeOther)
+		return
+	}
+	if err := h.store.UpdateUserPassword(r.Context(), username, pwhash); err != nil {
+		h.logger.Error("failed to update gpodder user password", "err", err, "username", username)
+	}
+	http.Redirect(w, r, page+"?flash=Password+updated.", http.StatusSeeOther)
+}
+
+func (h *WebHandler) deleteUserDevice(w http.ResponseWriter, r *http.Request, username, page string) {
+	device := r.PathValue("device")
+	if h.writeFailed(w, r, h.store.DeleteDevice(r.Context(), username, device), "DeleteDevice", page) {
+		return
+	}
+	h.logger.Info("device deleted", "username", username, "device", device)
+	http.Redirect(w, r, page, http.StatusSeeOther)
+}
+
+func (h *WebHandler) deleteAllSubscriptions(w http.ResponseWriter, r *http.Request, username, page string) {
+	subs, _ := h.store.GetSubscriptions(r.Context(), username)
+	if len(subs) > 0 && h.writeFailed(w, r, h.store.UpdateSubscriptions(r.Context(), username, nil, subs, time.Now().Unix()), "UpdateSubscriptions", page) {
+		return
+	}
+	http.Redirect(w, r, page, http.StatusSeeOther)
+}
+
+func (h *WebHandler) deleteOneSubscription(w http.ResponseWriter, r *http.Request, username, page string) {
+	if url := r.FormValue("url"); url != "" && h.writeFailed(w, r, h.store.UpdateSubscriptions(r.Context(), username, nil, []string{url}, time.Now().Unix()), "UpdateSubscriptions", page) {
+		return
+	}
+	http.Redirect(w, r, page, http.StatusSeeOther)
+}
+
+func (h *WebHandler) subscribe(w http.ResponseWriter, r *http.Request, username, page string) {
+	url := strings.TrimSpace(r.FormValue("url"))
+	if url == "" {
+		http.Redirect(w, r, page+"?error=Feed+URL+is+required.", http.StatusSeeOther)
+		return
+	}
+	if !isValidFeedURL(url) {
+		http.Redirect(w, r, page+"?error=Invalid+URL.+Only+http+and+https+URLs+are+allowed.", http.StatusSeeOther)
+		return
+	}
+	now := time.Now().Unix()
+	if h.writeFailed(w, r, h.store.ReactivateSubscription(r.Context(), username, url, now), "ReactivateSubscription", page) ||
+		h.writeFailed(w, r, h.store.UpdateSubscriptions(r.Context(), username, []string{url}, nil, now), "UpdateSubscriptions", page) {
+		return
+	}
+	http.Redirect(w, r, page+"?flash=Subscribed+to+feed.", http.StatusSeeOther)
+}
+
+func (h *WebHandler) importSubscriptions(w http.ResponseWriter, r *http.Request, username, page string) {
+	urls, err := h.parseOPMLUpload(r)
+	if err != nil {
+		http.Redirect(w, r, page+"?error=Invalid+OPML+file.", http.StatusSeeOther)
+		return
+	}
+	urls = filterValidURLs(urls)
+	now := time.Now().Unix()
+	for _, u := range urls {
+		if h.writeFailed(w, r, h.store.ReactivateSubscription(r.Context(), username, u, now), "ReactivateSubscription", page) {
+			return
+		}
+	}
+	if h.writeFailed(w, r, h.store.UpdateSubscriptions(r.Context(), username, urls, nil, now), "UpdateSubscriptions", page) {
+		return
+	}
+	http.Redirect(w, r, page+"?flash=Imported+"+fmt.Sprint(len(urls))+"+subscriptions.", http.StatusSeeOther)
+}
+
+func (h *WebHandler) enableSharing(w http.ResponseWriter, r *http.Request, username, page string) {
+	if !h.isSettingEnabled(r.Context(), SettingAllowSharing) {
+		http.Redirect(w, r, page, http.StatusSeeOther)
+		return
+	}
+	if h.writeFailed(w, r, h.store.SetUserShareToken(r.Context(), username, new(uuid.New().String())), "SetUserShareToken", page) {
+		return
+	}
+	http.Redirect(w, r, page+"?flash=Share+links+generated.", http.StatusSeeOther)
+}
+
+func (h *WebHandler) disableSharing(w http.ResponseWriter, r *http.Request, username, page string) {
+	if h.writeFailed(w, r, h.store.SetUserShareToken(r.Context(), username, nil), "SetUserShareToken", page) {
+		return
+	}
+	http.Redirect(w, r, page+"?flash=Sharing+disabled.", http.StatusSeeOther)
 }
 
 func (h *WebHandler) deleteUserCascade(ctx context.Context, username string) {
@@ -621,53 +655,6 @@ func deleteAccountCascade(ctx context.Context, store Store, accountID string) {
 	}
 	_ = store.DeleteAPIKeysByAccount(ctx, accountID)
 	_ = store.DeleteAccount(ctx, accountID)
-}
-
-func (h *WebHandler) deleteSubscription(ctx context.Context, username, url string) error {
-	if url == "" {
-		return nil
-	}
-	return h.store.UpdateSubscriptions(ctx, username, nil, []string{url}, time.Now().Unix())
-}
-
-func (h *WebHandler) addSubscription(ctx context.Context, username string, r *http.Request) (errMsg string) {
-	url := strings.TrimSpace(r.FormValue("url"))
-	if url == "" {
-		return "Feed+URL+is+required."
-	}
-	if !isValidFeedURL(url) {
-		return "Invalid+URL.+Only+http+and+https+URLs+are+allowed."
-	}
-	now := time.Now().Unix()
-	if err := h.store.ReactivateSubscription(ctx, username, url, now); err != nil {
-		h.logger.Error("store write failed", "op", "ReactivateSubscription", "err", err)
-		return webWriteErrMsg
-	}
-	if err := h.store.UpdateSubscriptions(ctx, username, []string{url}, nil, now); err != nil {
-		h.logger.Error("store write failed", "op", "UpdateSubscriptions", "err", err)
-		return webWriteErrMsg
-	}
-	return ""
-}
-
-func (h *WebHandler) importOPML(ctx context.Context, username string, r *http.Request) (int, string) {
-	urls, err := h.parseOPMLUpload(r)
-	if err != nil {
-		return 0, "Invalid+OPML+file."
-	}
-	urls = filterValidURLs(urls)
-	now := time.Now().Unix()
-	for _, u := range urls {
-		if err := h.store.ReactivateSubscription(ctx, username, u, now); err != nil {
-			h.logger.Error("store write failed", "op", "ReactivateSubscription", "err", err)
-			return 0, webWriteErrMsg
-		}
-	}
-	if err := h.store.UpdateSubscriptions(ctx, username, urls, nil, now); err != nil {
-		h.logger.Error("store write failed", "op", "UpdateSubscriptions", "err", err)
-		return 0, webWriteErrMsg
-	}
-	return len(urls), ""
 }
 
 func (h *WebHandler) buildUsersData(ctx context.Context, accountID string) []web.UserData {
@@ -953,27 +940,6 @@ func (h *WebHandler) handleUserDetail(w http.ResponseWriter, r *http.Request) {
 	_ = web.UserDetailPage(data).Render(r.Context(), w)
 }
 
-func (h *WebHandler) handleChangeUserPassword(w http.ResponseWriter, r *http.Request) {
-	accountID := r.PathValue("id")
-	username := r.PathValue("username")
-	password := r.FormValue("password")
-	password2 := r.FormValue("password2")
-	redirect := "/admin/accounts/" + accountID + "/users/" + username
-	if password == "" || password != password2 {
-		http.Redirect(w, r, redirect+"?error=Passwords+do+not+match.", http.StatusSeeOther)
-		return
-	}
-	pwhash, msg := h.hashNewPassword(r.Context(), password)
-	if msg != "" {
-		http.Redirect(w, r, redirect+"?error="+msg, http.StatusSeeOther)
-		return
-	}
-	if err := h.store.UpdateUserPassword(r.Context(), username, pwhash); err != nil {
-		h.logger.Error("failed to update gpodder user password", "err", err, "username", username)
-	}
-	http.Redirect(w, r, redirect+"?flash=Password+updated.", http.StatusSeeOther)
-}
-
 func (h *WebHandler) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	accountID := r.PathValue("id")
 	username := r.FormValue("username")
@@ -1014,61 +980,6 @@ func (h *WebHandler) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 	h.deleteUserCascade(r.Context(), username)
 	h.logger.Info("gpodder user deleted by admin", "username", username, "account_id", accountID)
 	http.Redirect(w, r, "/admin/accounts/"+accountID, http.StatusSeeOther)
-}
-
-func (h *WebHandler) handleDeleteDevice(w http.ResponseWriter, r *http.Request) {
-	accountID := r.PathValue("id")
-	username := r.PathValue("username")
-	device := r.PathValue("device")
-	if h.writeFailed(w, r, h.store.DeleteDevice(r.Context(), username, device), "DeleteDevice", "/admin/accounts/"+accountID+"/users/"+username) {
-		return
-	}
-	h.logger.Info("device deleted", "username", username, "device", device)
-	http.Redirect(w, r, "/admin/accounts/"+accountID+"/users/"+username, http.StatusSeeOther)
-}
-
-func (h *WebHandler) handleDeleteSubscriptions(w http.ResponseWriter, r *http.Request) {
-	accountID := r.PathValue("id")
-	username := r.PathValue("username")
-	subs, _ := h.store.GetSubscriptions(r.Context(), username)
-	if len(subs) > 0 && h.writeFailed(w, r, h.store.UpdateSubscriptions(r.Context(), username, nil, subs, time.Now().Unix()), "UpdateSubscriptions", "/admin/accounts/"+accountID+"/users/"+username) {
-		return
-	}
-	http.Redirect(w, r, "/admin/accounts/"+accountID+"/users/"+username, http.StatusSeeOther)
-}
-
-func (h *WebHandler) handleDeleteSingleSubscription(w http.ResponseWriter, r *http.Request) {
-	accountID := r.PathValue("id")
-	username := r.PathValue("username")
-	if h.writeFailed(w, r, h.deleteSubscription(r.Context(), username, r.FormValue("url")), "UpdateSubscriptions", "/admin/accounts/"+accountID+"/users/"+username) {
-		return
-	}
-	http.Redirect(w, r, "/admin/accounts/"+accountID+"/users/"+username, http.StatusSeeOther)
-}
-
-func (h *WebHandler) handleAdminAddSubscription(w http.ResponseWriter, r *http.Request) {
-	accountID := r.PathValue("id")
-	username := r.PathValue("username")
-	redirect := "/admin/accounts/" + accountID + "/users/" + username
-
-	if err := h.addSubscription(r.Context(), username, r); err != "" {
-		http.Redirect(w, r, redirect+"?error="+err, http.StatusSeeOther)
-		return
-	}
-	http.Redirect(w, r, redirect+"?flash=Subscribed+to+feed.", http.StatusSeeOther)
-}
-
-func (h *WebHandler) handleAdminImportOPML(w http.ResponseWriter, r *http.Request) {
-	accountID := r.PathValue("id")
-	username := r.PathValue("username")
-	redirect := "/admin/accounts/" + accountID + "/users/" + username
-
-	n, errMsg := h.importOPML(r.Context(), username, r)
-	if errMsg != "" {
-		http.Redirect(w, r, redirect+"?error="+errMsg, http.StatusSeeOther)
-		return
-	}
-	http.Redirect(w, r, redirect+"?flash=Imported+"+fmt.Sprint(n)+"+subscriptions.", http.StatusSeeOther)
 }
 
 // Registration
@@ -1374,54 +1285,6 @@ func collectOPMLURLs(outlines []opmlOutline, urls *[]string) {
 }
 
 // Sharing
-
-func (h *WebHandler) handleSelfEnableSharing(w http.ResponseWriter, r *http.Request) {
-	username, ok := h.requireOwnUser(w, r)
-	if !ok {
-		return
-	}
-	if !h.isSettingEnabled(r.Context(), SettingAllowSharing) {
-		http.Redirect(w, r, "/users/"+username, http.StatusSeeOther)
-		return
-	}
-	if h.writeFailed(w, r, h.store.SetUserShareToken(r.Context(), username, new(uuid.New().String())), "SetUserShareToken", "/users/"+username) {
-		return
-	}
-	http.Redirect(w, r, "/users/"+username+"?flash=Share+links+generated.", http.StatusSeeOther)
-}
-
-func (h *WebHandler) handleSelfDisableSharing(w http.ResponseWriter, r *http.Request) {
-	username, ok := h.requireOwnUser(w, r)
-	if !ok {
-		return
-	}
-	if h.writeFailed(w, r, h.store.SetUserShareToken(r.Context(), username, nil), "SetUserShareToken", "/users/"+username) {
-		return
-	}
-	http.Redirect(w, r, "/users/"+username+"?flash=Sharing+disabled.", http.StatusSeeOther)
-}
-
-func (h *WebHandler) handleAdminEnableSharing(w http.ResponseWriter, r *http.Request) {
-	accountID := r.PathValue("id")
-	username := r.PathValue("username")
-	if !h.isSettingEnabled(r.Context(), SettingAllowSharing) {
-		http.Redirect(w, r, "/admin/accounts/"+accountID+"/users/"+username, http.StatusSeeOther)
-		return
-	}
-	if h.writeFailed(w, r, h.store.SetUserShareToken(r.Context(), username, new(uuid.New().String())), "SetUserShareToken", "/admin/accounts/"+accountID+"/users/"+username) {
-		return
-	}
-	http.Redirect(w, r, "/admin/accounts/"+accountID+"/users/"+username+"?flash=Share+links+generated.", http.StatusSeeOther)
-}
-
-func (h *WebHandler) handleAdminDisableSharing(w http.ResponseWriter, r *http.Request) {
-	accountID := r.PathValue("id")
-	username := r.PathValue("username")
-	if h.writeFailed(w, r, h.store.SetUserShareToken(r.Context(), username, nil), "SetUserShareToken", "/admin/accounts/"+accountID+"/users/"+username) {
-		return
-	}
-	http.Redirect(w, r, "/admin/accounts/"+accountID+"/users/"+username+"?flash=Sharing+disabled.", http.StatusSeeOther)
-}
 
 func (h *WebHandler) handlePublicOPML(w http.ResponseWriter, r *http.Request) {
 	username := r.PathValue("username")
