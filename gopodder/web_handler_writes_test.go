@@ -79,12 +79,12 @@ func (f *failingStore) DeleteDevice(ctx context.Context, username, deviceID stri
 func webTestEnv(t *testing.T, failOn string) http.Handler {
 	t.Helper()
 	sid := "user-session"
-	ms := newMockStore()
-	ms.accounts["admin-id"] = &Account{ID: "admin-id", Username: "admin", PWHash: testHash("admin"), Role: RoleAdmin, SessionID: &sid}
-	ms.users["user1"] = &User{Username: "user1", AccountID: "admin-id"}
-	ms.apiKeys = append(ms.apiKeys, APIKey{ID: "key1", AccountID: "admin-id", Name: "test", Prefix: "gp_test"})
-	ms.settings[SettingAllowSharing] = "true"
-	ms.settings[SettingAllowAPIKeys] = "true"
+	ms := newFixtureStore(t)
+	addAccount(t, ms, Account{ID: "admin-id", Username: "admin", PWHash: testHash("admin"), Role: RoleAdmin, SessionID: &sid})
+	addUser(t, ms, User{Username: "user1", AccountID: "admin-id"})
+	addAPIKey(t, ms, APIKey{ID: "key1", AccountID: "admin-id", Name: "test", Prefix: "gp_test"})
+	setSetting(t, ms, SettingAllowSharing, "true")
+	setSetting(t, ms, SettingAllowAPIKeys, "true")
 	return newTestAPI(&failingStore{Store: ms, failOn: failOn}).Handler()
 }
 
@@ -165,8 +165,8 @@ func TestSuccessfulWriteStillReportsSuccess(t *testing.T) {
 // Best-effort activity timestamps must stay best effort. A failing
 // UpdateAccountLastLogin should not block the login it is recording.
 func TestActivityTimestampFailureDoesNotBlockLogin(t *testing.T) {
-	ms := newMockStore()
-	ms.accounts["a1"] = &Account{ID: "a1", Username: "user1", PWHash: testHash("secret123"), Role: RoleStandard}
+	ms := newFixtureStore(t)
+	addAccount(t, ms, Account{ID: "a1", Username: "user1", PWHash: testHash("secret123"), Role: RoleStandard})
 	handler := newTestAPI(&lastLoginFailsStore{Store: ms}).Handler()
 
 	r := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader("username=user1&password=secret123"))

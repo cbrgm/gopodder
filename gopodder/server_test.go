@@ -153,9 +153,9 @@ func TestGetClampedSetting(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			store := newMockStore()
+			store := newFixtureStore(t)
 			if !tt.storeErr {
-				store.settings[SettingEpisodeRetention] = tt.stored
+				setSetting(t, store, SettingEpisodeRetention, tt.stored)
 			}
 			got := getClampedSetting(store, SettingEpisodeRetention, tt.defaultVal, tt.min, tt.max)
 			if got != tt.want {
@@ -166,34 +166,34 @@ func TestGetClampedSetting(t *testing.T) {
 }
 
 func TestCleanupEpisodes_Disabled(t *testing.T) {
-	store := newMockStore()
-	store.settings[SettingEpisodeRetention] = "0"
+	store := newFixtureStore(t)
+	setSetting(t, store, SettingEpisodeRetention, "0")
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 
 	cleanupEpisodes(logger, store)
 }
 
 func TestCleanupInactiveAccounts_Disabled(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 
-	store.accounts["u1"] = &Account{ID: "u1", Username: "user1", Role: RoleStandard}
+	addAccount(t, store, Account{ID: "u1", Username: "user1", Role: RoleStandard})
 	cleanupInactiveAccounts(logger, store)
 
-	if _, ok := store.accounts["u1"]; !ok {
+	if accountOf(t, store, "u1") == nil {
 		t.Error("account should not have been deleted when setting is disabled (default 0)")
 	}
 }
 
 func TestCleanupInactiveAccounts_SkipsAdmins(t *testing.T) {
-	store := newMockStore()
-	store.settings[SettingInactiveAccountDays] = "30"
+	store := newFixtureStore(t)
+	setSetting(t, store, SettingInactiveAccountDays, "30")
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 
-	store.accounts["admin1"] = &Account{ID: "admin1", Username: "admin", Role: RoleAdmin}
+	addAccount(t, store, Account{ID: "admin1", Username: "admin1", Role: RoleAdmin})
 	cleanupInactiveAccounts(logger, store)
 
-	if _, ok := store.accounts["admin1"]; !ok {
+	if accountOf(t, store, "admin1") == nil {
 		t.Error("admin account should never be deleted by cleanup")
 	}
 }

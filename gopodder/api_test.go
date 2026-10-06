@@ -205,7 +205,7 @@ func TestMetricsPath(t *testing.T) {
 }
 
 func TestHandleClientConfig(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
@@ -231,7 +231,7 @@ func TestHandleClientConfig(t *testing.T) {
 }
 
 func TestHandleClientConfig_HTTPS(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
@@ -249,7 +249,7 @@ func TestHandleClientConfig_HTTPS(t *testing.T) {
 }
 
 func TestHandleEmptyOPML(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
@@ -271,7 +271,7 @@ func TestHandleEmptyOPML(t *testing.T) {
 }
 
 func TestHandleEmptyJSON(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
@@ -293,9 +293,9 @@ func TestHandleEmptyJSON(t *testing.T) {
 }
 
 func TestHandleGetAllSubscriptions_OPML(t *testing.T) {
-	store := newMockStore()
-	store.users["testuser"] = &User{Username: "testuser", PWHash: testHash("testpass")}
-	store.subscriptions["testuser"] = []string{"https://example.com/feed.xml"}
+	store := newFixtureStore(t)
+	addUser(t, store, User{Username: "testuser", PWHash: testHash("testpass")})
+	setSubscriptions(t, store, "testuser", []string{"https://example.com/feed.xml"})
 	api := newTestAPI(store)
 	handler := api.Handler()
 

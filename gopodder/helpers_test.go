@@ -1,439 +1,194 @@
 package gopodder
 
 import (
-	"context"
-	"fmt"
+	"cmp"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"testing"
 	"time"
 )
 
-type mockStore struct {
-	accounts      map[string]*Account
-	users         map[string]*User
-	devices       map[string][]Device
-	subscriptions map[string][]string // keyed by username
-	episodes      map[string][]Episode
-	settings      map[string]string
-	apiKeys       []APIKey
-}
-
-func newMockStore() *mockStore {
-	return &mockStore{
-		accounts:      make(map[string]*Account),
-		users:         make(map[string]*User),
-		devices:       make(map[string][]Device),
-		subscriptions: make(map[string][]string),
-		episodes:      make(map[string][]Episode),
-		settings:      make(map[string]string),
+// newFixtureStore returns a real in-memory store holding the admin account the
+// handler tests log in with.
+func newFixtureStore(t *testing.T) *SQLStore {
+	t.Helper()
+	s, err := NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatalf("NewSQLiteStore: %v", err)
 	}
+	t.Cleanup(func() { _ = s.Close() })
+	addAccount(t, s, Account{ID: "admin-id", Username: "admin", PWHash: testHash("admin"), Role: RoleAdmin})
+	return s
 }
 
-// Accounts
-
-func (m *mockStore) GetAccount(_ context.Context, username string) (*Account, error) {
-	for _, a := range m.accounts {
-		if a.Username == username {
-			return a, nil
+// addAccount creates the account, replacing one with the same ID.
+func addAccount(t *testing.T, s Store, a Account) {
+	t.Helper()
+	ctx := t.Context()
+	if _, err := s.GetAccountByID(ctx, a.ID); err == nil {
+		must(t, s.DeleteAccount(ctx, a.ID))
+	}
+	if err := s.CreateAccount(ctx, a.ID, a.Username, a.PWHash, a.Role, cmp.Or(a.CreatedAt, time.Now())); err != nil {
+		t.Fatalf("seed account %q: %v", a.ID, err)
+	}
+	if a.SessionID != nil {
+		if err := s.UpdateAccountSession(ctx, a.ID, a.SessionID, ptrOr(a.SessionCreated, time.Now())); err != nil {
+			t.Fatalf("seed account session %q: %v", a.ID, err)
 		}
 	}
-	return nil, fmt.Errorf("not found")
-}
-
-func (m *mockStore) GetAccountByID(_ context.Context, id string) (*Account, error) {
-	a, ok := m.accounts[id]
-	if !ok {
-		return nil, fmt.Errorf("not found")
-	}
-	return a, nil
-}
-
-func (m *mockStore) CreateAccount(_ context.Context, id, username, pwhash, role string, _ time.Time) error {
-	m.accounts[id] = &Account{ID: id, Username: username, PWHash: pwhash, Role: role}
-	return nil
-}
-
-func (m *mockStore) UpdateAccountSession(_ context.Context, id string, sessionID *string, now time.Time) error {
-	if a, ok := m.accounts[id]; ok {
-		a.SessionID = sessionID
-		if sessionID != nil {
-			a.SessionCreated = &now
-		} else {
-			a.SessionCreated = nil
+	if a.LastLogin != nil {
+		if err := s.UpdateAccountLastLogin(ctx, a.ID, *a.LastLogin); err != nil {
+			t.Fatalf("seed account last login %q: %v", a.ID, err)
 		}
 	}
-	return nil
 }
 
-func (m *mockStore) UpdateAccountLastLogin(_ context.Context, _ string, _ time.Time) error {
-	return nil
+// ensureAccount creates a bare account for fixtures that only name one, the
+// schema requires it for users and api keys.
+func ensureAccount(t *testing.T, s Store, id string) {
+	t.Helper()
+	if _, err := s.GetAccountByID(t.Context(), id); err != nil {
+		addAccount(t, s, Account{ID: id, Username: id, Role: RoleStandard})
+	}
 }
 
-func (m *mockStore) GetAccountBySession(_ context.Context, sessionID string) (*Account, error) {
-	for _, a := range m.accounts {
-		if a.SessionID != nil && *a.SessionID == sessionID {
-			return a, nil
+func addUser(t *testing.T, s Store, u User) {
+	t.Helper()
+	ctx := t.Context()
+	u.AccountID = cmp.Or(u.AccountID, testAccountID)
+	ensureAccount(t, s, u.AccountID)
+	if err := s.CreateUser(ctx, u.Username, u.PWHash, u.AccountID); err != nil {
+		t.Fatalf("seed user %q: %v", u.Username, err)
+	}
+	if u.SessionID != nil {
+		if err := s.UpdateUserSession(ctx, u.Username, u.SessionID, ptrOr(u.SessionCreated, time.Now())); err != nil {
+			t.Fatalf("seed user session %q: %v", u.Username, err)
 		}
 	}
-	return nil, fmt.Errorf("not found")
-}
-
-func (m *mockStore) ListAccounts(_ context.Context) ([]Account, error) {
-	accounts := make([]Account, 0, len(m.accounts))
-	for _, a := range m.accounts {
-		accounts = append(accounts, *a)
-	}
-	return accounts, nil
-}
-
-func (m *mockStore) DeleteAccount(_ context.Context, id string) error {
-	delete(m.accounts, id)
-	return nil
-}
-
-func (m *mockStore) ListInactiveAccounts(_ context.Context, _ int64) ([]Account, error) {
-	return nil, nil
-}
-
-func (m *mockStore) CountAccounts(_ context.Context) (int64, error) {
-	return int64(len(m.accounts)), nil
-}
-
-func (m *mockStore) UpdateAccountUsername(_ context.Context, id, username string) error {
-	if a, ok := m.accounts[id]; ok {
-		a.Username = username
-	}
-	return nil
-}
-
-func (m *mockStore) UpdateAccountPassword(_ context.Context, id, pwhash string) error {
-	if a, ok := m.accounts[id]; ok {
-		a.PWHash = pwhash
-	}
-	return nil
-}
-
-func (m *mockStore) UpdateAccountRole(_ context.Context, id, role string) error {
-	if a, ok := m.accounts[id]; ok {
-		a.Role = role
-	}
-	return nil
-}
-
-// Users
-
-func (m *mockStore) GetUser(_ context.Context, username string) (*User, error) {
-	u, ok := m.users[username]
-	if !ok {
-		return nil, fmt.Errorf("not found")
-	}
-	return u, nil
-}
-
-func (m *mockStore) CreateUser(_ context.Context, username, pwhash, accountID string) error {
-	m.users[username] = &User{Username: username, PWHash: pwhash, AccountID: accountID}
-	return nil
-}
-
-func (m *mockStore) UpdateUserPassword(_ context.Context, username, pwhash string) error {
-	if u, ok := m.users[username]; ok {
-		u.PWHash = pwhash
-	}
-	return nil
-}
-
-func (m *mockStore) UpdateUserLastActivity(_ context.Context, _ string, _ time.Time) error {
-	return nil
-}
-
-func (m *mockStore) UpdateUserSession(_ context.Context, username string, sessionID *string, now time.Time) error {
-	if u, ok := m.users[username]; ok {
-		u.SessionID = sessionID
-		if sessionID != nil {
-			u.SessionCreated = &now
-		} else {
-			u.SessionCreated = nil
+	if u.ShareToken != nil {
+		if err := s.SetUserShareToken(ctx, u.Username, u.ShareToken); err != nil {
+			t.Fatalf("seed share token %q: %v", u.Username, err)
 		}
 	}
-	return nil
-}
-
-func (m *mockStore) GetUserBySession(_ context.Context, sessionID string) (*User, error) {
-	for _, u := range m.users {
-		if u.SessionID != nil && *u.SessionID == sessionID {
-			return u, nil
+	if u.LastActivity != nil {
+		if err := s.UpdateUserLastActivity(ctx, u.Username, *u.LastActivity); err != nil {
+			t.Fatalf("seed user activity %q: %v", u.Username, err)
 		}
 	}
-	return nil, fmt.Errorf("not found")
 }
 
-func (m *mockStore) ListUsers(_ context.Context) ([]User, error) {
-	users := make([]User, 0, len(m.users))
-	for _, u := range m.users {
-		users = append(users, *u)
-	}
-	return users, nil
-}
-
-func (m *mockStore) ListUsersByAccount(_ context.Context, accountID string) ([]User, error) {
-	var users []User
-	for _, u := range m.users {
-		if u.AccountID == accountID {
-			users = append(users, *u)
+func setDevices(t *testing.T, s Store, username string, devices []Device) {
+	t.Helper()
+	for _, d := range devices {
+		dev := DeviceUpdate{Caption: &d.Caption}
+		if d.Type != "" {
+			dev.Type = &d.Type
+		}
+		if err := s.UpsertDevice(t.Context(), username, d.ID, dev); err != nil {
+			t.Fatalf("seed device %q: %v", d.ID, err)
+		}
+		if d.LastActivity != nil {
+			if err := s.UpdateDeviceLastActivity(t.Context(), username, d.ID, *d.LastActivity); err != nil {
+				t.Fatalf("seed device activity %q: %v", d.ID, err)
+			}
 		}
 	}
-	return users, nil
 }
 
-func (m *mockStore) ListUsersByAccountWithStats(_ context.Context, accountID string) ([]UserWithStats, error) {
-	var users []UserWithStats
-	for _, u := range m.users {
-		if u.AccountID == accountID {
-			users = append(users, UserWithStats{
-				Username:      u.Username,
-				AccountID:     u.AccountID,
-				LastActivity:  u.LastActivity,
-				Devices:       int64(len(m.devices[u.Username])),
-				Subscriptions: int64(len(m.subscriptions[u.Username])),
-			})
-		}
+func setSubscriptions(t *testing.T, s Store, username string, urls []string) {
+	t.Helper()
+	if err := s.ReplaceSubscriptions(t.Context(), username, urls, time.Now().Unix()); err != nil {
+		t.Fatalf("seed subscriptions %q: %v", username, err)
 	}
-	return users, nil
 }
 
-func (m *mockStore) DeleteUser(_ context.Context, username string) error {
-	delete(m.users, username)
-	return nil
-}
-
-func (m *mockStore) DeleteUsersByAccount(_ context.Context, accountID string) error {
-	for name, u := range m.users {
-		if u.AccountID == accountID {
-			delete(m.users, name)
-		}
+func setEpisodes(t *testing.T, s Store, username string, episodes []Episode) {
+	t.Helper()
+	if err := s.UpdateEpisodes(t.Context(), username, episodes, time.Now().Unix()); err != nil {
+		t.Fatalf("seed episodes %q: %v", username, err)
 	}
-	return nil
 }
 
-func (m *mockStore) SetUserShareToken(_ context.Context, username string, token *string) error {
-	if u, ok := m.users[username]; ok {
-		u.ShareToken = token
+func setSetting(t *testing.T, s Store, key, value string) {
+	t.Helper()
+	if err := s.SetSetting(t.Context(), key, value); err != nil {
+		t.Fatalf("seed setting %q: %v", key, err)
 	}
-	return nil
 }
 
-func (m *mockStore) GetUserByShareToken(_ context.Context, token string) (*User, error) {
-	for _, u := range m.users {
-		if u.ShareToken != nil && *u.ShareToken == token {
-			return u, nil
-		}
+func addAPIKey(t *testing.T, s Store, k APIKey) {
+	t.Helper()
+	k.CreatedAt = cmp.Or(k.CreatedAt, time.Now())
+	ensureAccount(t, s, k.AccountID)
+	if err := s.CreateAPIKey(t.Context(), k); err != nil {
+		t.Fatalf("seed api key %q: %v", k.ID, err)
 	}
-	return nil, fmt.Errorf("not found")
 }
 
-// Devices
-
-func (m *mockStore) ListDevices(_ context.Context, username string) ([]Device, error) {
-	return m.devices[username], nil
-}
-
-func (m *mockStore) UpsertDevice(_ context.Context, username, deviceID string, dev DeviceUpdate) error {
-	d := Device{ID: deviceID, Type: ptrStringOr(dev.Type, "other")}
-	if dev.Caption != nil {
-		d.Caption = *dev.Caption
+func must(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
 	}
-	devs := m.devices[username]
-	for i, existing := range devs {
-		if existing.ID == deviceID {
-			devs[i] = d
-			m.devices[username] = devs
-			return nil
-		}
+}
+
+func subscriptionsOf(t *testing.T, s Store, username string) []string {
+	t.Helper()
+	subs, err := s.GetSubscriptions(t.Context(), username)
+	must(t, err)
+	return subs
+}
+
+func devicesOf(t *testing.T, s Store, username string) []Device {
+	t.Helper()
+	devs, err := s.ListDevices(t.Context(), username)
+	must(t, err)
+	return devs
+}
+
+// settingOf returns the stored value, "" when the setting is unset.
+func settingOf(t *testing.T, s Store, key string) string {
+	t.Helper()
+	v, _ := s.GetSetting(t.Context(), key)
+	return v
+}
+
+// accountOf returns the account, nil when it does not exist.
+func accountOf(t *testing.T, s Store, id string) *Account {
+	t.Helper()
+	a, _ := s.GetAccountByID(t.Context(), id)
+	return a
+}
+
+// userOf returns the user, nil when it does not exist.
+func userOf(t *testing.T, s Store, username string) *User {
+	t.Helper()
+	u, _ := s.GetUser(t.Context(), username)
+	return u
+}
+
+func accountsOf(t *testing.T, s Store) []Account {
+	t.Helper()
+	accts, err := s.ListAccounts(t.Context())
+	must(t, err)
+	return accts
+}
+
+func accountCount(t *testing.T, s Store) int {
+	t.Helper()
+	n, err := s.CountAccounts(t.Context())
+	must(t, err)
+	return int(n)
+}
+
+func ptrOr[T any](p *T, def T) T {
+	if p != nil {
+		return *p
 	}
-	m.devices[username] = append(devs, d)
-	return nil
+	return def
 }
-
-func (m *mockStore) UpdateDeviceLastActivity(_ context.Context, _ string, _ string, _ time.Time) error {
-	return nil
-}
-
-func (m *mockStore) DeleteDevice(_ context.Context, username, deviceID string) error {
-	devs := m.devices[username]
-	for i, d := range devs {
-		if d.ID == deviceID {
-			m.devices[username] = append(devs[:i], devs[i+1:]...)
-			return nil
-		}
-	}
-	return nil
-}
-
-func (m *mockStore) DeleteAllUserDevices(_ context.Context, username string) error {
-	delete(m.devices, username)
-	return nil
-}
-
-// Subscriptions
-
-func (m *mockStore) GetSubscriptions(_ context.Context, username string) ([]string, error) {
-	return m.subscriptions[username], nil
-}
-
-func (m *mockStore) GetSubscriptionChanges(_ context.Context, _ string, _ int64) (*SubscriptionChanges, error) {
-	return &SubscriptionChanges{Add: []string{}, Remove: []string{}}, nil
-}
-
-func (m *mockStore) UpdateSubscriptions(_ context.Context, username string, add, remove []string, _ int64) error {
-	subs := m.subscriptions[username]
-	for _, u := range add {
-		subs = append(subs, u)
-	}
-	rmSet := make(map[string]struct{})
-	for _, u := range remove {
-		rmSet[u] = struct{}{}
-	}
-	filtered := subs[:0]
-	for _, u := range subs {
-		if _, ok := rmSet[u]; !ok {
-			filtered = append(filtered, u)
-		}
-	}
-	m.subscriptions[username] = filtered
-	return nil
-}
-
-func (m *mockStore) ReplaceSubscriptions(_ context.Context, username string, desired []string, _ int64) error {
-	m.subscriptions[username] = desired
-	return nil
-}
-
-func (m *mockStore) ReactivateSubscription(_ context.Context, _ string, _ string, _ int64) error {
-	return nil
-}
-
-
-func (m *mockStore) DeleteAllUserSubscriptions(_ context.Context, username string) error {
-	delete(m.subscriptions, username)
-	return nil
-}
-
-// Episodes
-
-func (m *mockStore) GetEpisodes(_ context.Context, params EpisodeQuery) ([]Episode, error) {
-	return m.episodes[params.Username], nil
-}
-
-func (m *mockStore) UpdateEpisodes(_ context.Context, username string, episodes []Episode, _ int64) error {
-	m.episodes[username] = append(m.episodes[username], episodes...)
-	return nil
-}
-
-func (m *mockStore) DeleteAllUserEpisodes(_ context.Context, username string) error {
-	delete(m.episodes, username)
-	return nil
-}
-
-func (m *mockStore) DeleteEpisodesOlderThan(_ context.Context, _ int64) (int64, error) {
-	return 0, nil
-}
-
-// API Keys
-
-func (m *mockStore) CreateAPIKey(_ context.Context, key APIKey) error {
-	m.apiKeys = append(m.apiKeys, key)
-	return nil
-}
-
-func (m *mockStore) ListAPIKeysByAccount(_ context.Context, accountID string) ([]APIKey, error) {
-	var keys []APIKey
-	for _, k := range m.apiKeys {
-		if k.AccountID == accountID {
-			keys = append(keys, k)
-		}
-	}
-	return keys, nil
-}
-
-func (m *mockStore) GetAPIKeysByPrefix(_ context.Context, prefix string) ([]APIKey, error) {
-	var keys []APIKey
-	for _, k := range m.apiKeys {
-		if k.Prefix == prefix {
-			keys = append(keys, k)
-		}
-	}
-	return keys, nil
-}
-
-func (m *mockStore) DeleteAPIKey(_ context.Context, id, accountID string) error {
-	for i, k := range m.apiKeys {
-		if k.ID == id && k.AccountID == accountID {
-			m.apiKeys = append(m.apiKeys[:i], m.apiKeys[i+1:]...)
-			return nil
-		}
-	}
-	return nil
-}
-
-func (m *mockStore) DeleteAPIKeysByAccount(_ context.Context, accountID string) error {
-	filtered := m.apiKeys[:0]
-	for _, k := range m.apiKeys {
-		if k.AccountID != accountID {
-			filtered = append(filtered, k)
-		}
-	}
-	m.apiKeys = filtered
-	return nil
-}
-
-func (m *mockStore) UpdateAPIKeyLastUsed(_ context.Context, _ string, _ time.Time) error {
-	return nil
-}
-
-func (m *mockStore) CountAPIKeysByAccount(_ context.Context, accountID string) (int64, error) {
-	var count int64
-	for _, k := range m.apiKeys {
-		if k.AccountID == accountID {
-			count++
-		}
-	}
-	return count, nil
-}
-
-// Stats
-
-func (m *mockStore) GetStats(_ context.Context) (Stats, error) {
-	var subs int64
-	for _, urls := range m.subscriptions {
-		subs += int64(len(urls))
-	}
-	return Stats{
-		Accounts:      int64(len(m.accounts)),
-		Users:         int64(len(m.users)),
-		Devices:       int64(len(m.devices)),
-		Subscriptions: subs,
-	}, nil
-}
-
-// Settings
-
-func (m *mockStore) GetSetting(_ context.Context, key string) (string, error) {
-	v, ok := m.settings[key]
-	if !ok {
-		return "", fmt.Errorf("not found")
-	}
-	return v, nil
-}
-
-func (m *mockStore) SetSetting(_ context.Context, key, value string) error {
-	m.settings[key] = value
-	return nil
-}
-
-func (m *mockStore) Ping(_ context.Context) error { return nil }
-func (m *mockStore) Close() error                  { return nil }
 
 // testHash hashes a fixture password, panicking on the errors that can only
 // come from a malformed test fixture.
@@ -446,9 +201,6 @@ func testHash(password string) string {
 }
 
 func newTestAPI(store Store) *API {
-	if ms, ok := store.(*mockStore); ok {
-		ms.accounts["admin-id"] = &Account{ID: "admin-id", Username: "admin", PWHash: testHash("admin"), Role: RoleAdmin}
-	}
 	logger := slog.Default()
 	return NewAPI(logger, store, noopMetrics{}, BuildInfo{
 		Version:   "test",

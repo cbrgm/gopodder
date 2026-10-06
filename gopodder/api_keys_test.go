@@ -11,10 +11,11 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-func seedAPIKey(store *mockStore, accountID, role, rawToken string) {
+func seedAPIKey(t *testing.T, store Store, accountID, role, rawToken string) {
+	t.Helper()
 	prefix := rawToken[:apiKeyPrefixLen]
 	hash, _ := bcrypt.GenerateFromPassword([]byte(rawToken), bcrypt.DefaultCost)
-	store.apiKeys = append(store.apiKeys, APIKey{
+	addAPIKey(t, store, APIKey{
 		ID:        "key-" + prefix,
 		AccountID: accountID,
 		Name:      "test-key",
@@ -38,7 +39,7 @@ func bearerRequest(method, path, token, body string) *http.Request {
 }
 
 func TestAPIv1_Unauthorized(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
@@ -62,12 +63,12 @@ func TestAPIv1_Unauthorized(t *testing.T) {
 }
 
 func TestAPIv1_StandardKeyForbiddenOnAdminEndpoints(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
-	seedAPIKey(store, "admin-id", RoleStandard, token)
+	seedAPIKey(t, store, "admin-id", RoleStandard, token)
 
 	tests := []struct {
 		method string
@@ -90,16 +91,16 @@ func TestAPIv1_StandardKeyForbiddenOnAdminEndpoints(t *testing.T) {
 }
 
 func TestAPIv1_ListUsers(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
-	store.users["user1"] = &User{Username: "user1", AccountID: "admin-id"}
-	store.users["user2"] = &User{Username: "user2", AccountID: "admin-id"}
-	store.users["other"] = &User{Username: "other", AccountID: "other-account"}
+	addUser(t, store, User{Username: "user1", AccountID: "admin-id"})
+	addUser(t, store, User{Username: "user2", AccountID: "admin-id"})
+	addUser(t, store, User{Username: "other", AccountID: "other-account"})
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
-	seedAPIKey(store, "admin-id", RoleStandard, token)
+	seedAPIKey(t, store, "admin-id", RoleStandard, token)
 
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, bearerRequest("GET", "/api/v1/users", token, ""))
@@ -118,12 +119,12 @@ func TestAPIv1_ListUsers(t *testing.T) {
 }
 
 func TestAPIv1_CreateUser(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
-	seedAPIKey(store, "admin-id", RoleStandard, token)
+	seedAPIKey(t, store, "admin-id", RoleStandard, token)
 
 	w := httptest.NewRecorder()
 	body := `{"username":"newuser","password":"secret123"}`
@@ -133,20 +134,20 @@ func TestAPIv1_CreateUser(t *testing.T) {
 		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
 	}
 
-	if _, err := store.GetUser(nil, "newuser"); err != nil {
+	if _, err := store.GetUser(t.Context(), "newuser"); err != nil {
 		t.Error("user was not created in store")
 	}
 }
 
 func TestAPIv1_CreateUser_Conflict(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
-	store.users["existing"] = &User{Username: "existing", AccountID: "admin-id"}
+	addUser(t, store, User{Username: "existing", AccountID: "admin-id"})
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
-	seedAPIKey(store, "admin-id", RoleStandard, token)
+	seedAPIKey(t, store, "admin-id", RoleStandard, token)
 
 	w := httptest.NewRecorder()
 	body := `{"username":"existing","password":"secret123"}`
@@ -158,14 +159,14 @@ func TestAPIv1_CreateUser_Conflict(t *testing.T) {
 }
 
 func TestAPIv1_DeleteUser(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
-	store.users["victim"] = &User{Username: "victim", AccountID: "admin-id"}
+	addUser(t, store, User{Username: "victim", AccountID: "admin-id"})
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
-	seedAPIKey(store, "admin-id", RoleStandard, token)
+	seedAPIKey(t, store, "admin-id", RoleStandard, token)
 
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, bearerRequest("DELETE", "/api/v1/users/victim", token, ""))
@@ -174,20 +175,20 @@ func TestAPIv1_DeleteUser(t *testing.T) {
 		t.Fatalf("expected 204, got %d: %s", w.Code, w.Body.String())
 	}
 
-	if _, err := store.GetUser(nil, "victim"); err == nil {
+	if _, err := store.GetUser(t.Context(), "victim"); err == nil {
 		t.Error("user was not deleted from store")
 	}
 }
 
 func TestAPIv1_DeleteUser_NotOwned(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
-	store.users["other-user"] = &User{Username: "other-user", AccountID: "other-account"}
+	addUser(t, store, User{Username: "other-user", AccountID: "other-account"})
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
-	seedAPIKey(store, "admin-id", RoleStandard, token)
+	seedAPIKey(t, store, "admin-id", RoleStandard, token)
 
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, bearerRequest("DELETE", "/api/v1/users/other-user", token, ""))
@@ -198,18 +199,18 @@ func TestAPIv1_DeleteUser_NotOwned(t *testing.T) {
 }
 
 func TestAPIv1_ListDevices(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
-	store.users["user1"] = &User{Username: "user1", AccountID: "admin-id"}
-	store.devices["user1"] = []Device{
+	addUser(t, store, User{Username: "user1", AccountID: "admin-id"})
+	setDevices(t, store, "user1", []Device{
 		{ID: "phone", Caption: "My Phone", Type: "mobile"},
 		{ID: "desktop", Caption: "My PC", Type: "desktop"},
-	}
+	})
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
-	seedAPIKey(store, "admin-id", RoleStandard, token)
+	seedAPIKey(t, store, "admin-id", RoleStandard, token)
 
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, bearerRequest("GET", "/api/v1/users/user1/devices", token, ""))
@@ -228,15 +229,15 @@ func TestAPIv1_ListDevices(t *testing.T) {
 }
 
 func TestAPIv1_GetSubscriptions(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
-	store.users["user1"] = &User{Username: "user1", AccountID: "admin-id"}
-	store.subscriptions["user1"] = []string{"https://example.com/feed1.xml", "https://example.com/feed2.xml"}
+	addUser(t, store, User{Username: "user1", AccountID: "admin-id"})
+	setSubscriptions(t, store, "user1", []string{"https://example.com/feed1.xml", "https://example.com/feed2.xml"})
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
-	seedAPIKey(store, "admin-id", RoleStandard, token)
+	seedAPIKey(t, store, "admin-id", RoleStandard, token)
 
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, bearerRequest("GET", "/api/v1/users/user1/subscriptions", token, ""))
@@ -255,15 +256,15 @@ func TestAPIv1_GetSubscriptions(t *testing.T) {
 }
 
 func TestAPIv1_GetSubscriptionsOPML(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
-	store.users["user1"] = &User{Username: "user1", AccountID: "admin-id"}
-	store.subscriptions["user1"] = []string{"https://example.com/feed.xml"}
+	addUser(t, store, User{Username: "user1", AccountID: "admin-id"})
+	setSubscriptions(t, store, "user1", []string{"https://example.com/feed.xml"})
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
-	seedAPIKey(store, "admin-id", RoleStandard, token)
+	seedAPIKey(t, store, "admin-id", RoleStandard, token)
 
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, bearerRequest("GET", "/api/v1/users/user1/subscriptions.opml", token, ""))
@@ -280,15 +281,15 @@ func TestAPIv1_GetSubscriptionsOPML(t *testing.T) {
 }
 
 func TestAPIv1_UpdateSubscriptions(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
-	store.users["user1"] = &User{Username: "user1", AccountID: "admin-id"}
-	store.subscriptions["user1"] = []string{"https://example.com/old.xml"}
+	addUser(t, store, User{Username: "user1", AccountID: "admin-id"})
+	setSubscriptions(t, store, "user1", []string{"https://example.com/old.xml"})
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
-	seedAPIKey(store, "admin-id", RoleStandard, token)
+	seedAPIKey(t, store, "admin-id", RoleStandard, token)
 
 	w := httptest.NewRecorder()
 	body := `{"add":["https://example.com/new.xml"],"remove":["https://example.com/old.xml"]}`
@@ -298,19 +299,19 @@ func TestAPIv1_UpdateSubscriptions(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	subs := store.subscriptions["user1"]
+	subs := subscriptionsOf(t, store, "user1")
 	if len(subs) != 1 || subs[0] != "https://example.com/new.xml" {
 		t.Errorf("unexpected subscriptions after update: %v", subs)
 	}
 }
 
 func TestAPIv1_AdminListAccounts(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
-	seedAPIKey(store, "admin-id", RoleAdmin, token)
+	seedAPIKey(t, store, "admin-id", RoleAdmin, token)
 
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, bearerRequest("GET", "/api/v1/accounts", token, ""))
@@ -329,12 +330,12 @@ func TestAPIv1_AdminListAccounts(t *testing.T) {
 }
 
 func TestAPIv1_AdminCreateAccount(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
-	seedAPIKey(store, "admin-id", RoleAdmin, token)
+	seedAPIKey(t, store, "admin-id", RoleAdmin, token)
 
 	w := httptest.NewRecorder()
 	body := `{"username":"newaccount","password":"secret123","role":"standard"}`
@@ -345,7 +346,7 @@ func TestAPIv1_AdminCreateAccount(t *testing.T) {
 	}
 
 	found := false
-	for _, a := range store.accounts {
+	for _, a := range accountsOf(t, store) {
 		if a.Username == "newaccount" {
 			found = true
 			if a.Role != RoleStandard {
@@ -359,12 +360,12 @@ func TestAPIv1_AdminCreateAccount(t *testing.T) {
 }
 
 func TestAPIv1_AdminCreateAccount_PasswordTooLong(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
-	seedAPIKey(store, "admin-id", RoleAdmin, token)
+	seedAPIKey(t, store, "admin-id", RoleAdmin, token)
 
 	w := httptest.NewRecorder()
 	body := `{"username":"longpw","password":"` + strings.Repeat("a", 100) + `","role":"standard"}`
@@ -373,7 +374,7 @@ func TestAPIv1_AdminCreateAccount_PasswordTooLong(t *testing.T) {
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
 	}
-	for _, a := range store.accounts {
+	for _, a := range accountsOf(t, store) {
 		if a.Username == "longpw" {
 			t.Fatal("account should not have been created")
 		}
@@ -381,14 +382,14 @@ func TestAPIv1_AdminCreateAccount_PasswordTooLong(t *testing.T) {
 }
 
 func TestAPIv1_AdminDeleteAccount(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
-	store.accounts["target-id"] = &Account{ID: "target-id", Username: "target", PWHash: testHash("pass"), Role: RoleStandard}
+	addAccount(t, store, Account{ID: "target-id", Username: "target", PWHash: testHash("pass"), Role: RoleStandard})
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
-	seedAPIKey(store, "admin-id", RoleAdmin, token)
+	seedAPIKey(t, store, "admin-id", RoleAdmin, token)
 
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, bearerRequest("DELETE", "/api/v1/accounts/target-id", token, ""))
@@ -397,18 +398,18 @@ func TestAPIv1_AdminDeleteAccount(t *testing.T) {
 		t.Fatalf("expected 204, got %d: %s", w.Code, w.Body.String())
 	}
 
-	if _, ok := store.accounts["target-id"]; ok {
+	if accountOf(t, store, "target-id") != nil {
 		t.Error("account was not deleted from store")
 	}
 }
 
 func TestAPIv1_AdminDeleteAccount_CannotDeleteAdmin(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
-	seedAPIKey(store, "admin-id", RoleAdmin, token)
+	seedAPIKey(t, store, "admin-id", RoleAdmin, token)
 
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, bearerRequest("DELETE", "/api/v1/accounts/admin-id", token, ""))
@@ -419,16 +420,16 @@ func TestAPIv1_AdminDeleteAccount_CannotDeleteAdmin(t *testing.T) {
 }
 
 func TestAPIv1_AdminListAccountUsers(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
-	store.accounts["other-id"] = &Account{ID: "other-id", Username: "other", Role: RoleStandard}
-	store.users["u1"] = &User{Username: "u1", AccountID: "other-id"}
-	store.users["u2"] = &User{Username: "u2", AccountID: "other-id"}
+	addAccount(t, store, Account{ID: "other-id", Username: "other", Role: RoleStandard})
+	addUser(t, store, User{Username: "u1", AccountID: "other-id"})
+	addUser(t, store, User{Username: "u2", AccountID: "other-id"})
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
-	seedAPIKey(store, "admin-id", RoleAdmin, token)
+	seedAPIKey(t, store, "admin-id", RoleAdmin, token)
 
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, bearerRequest("GET", "/api/v1/accounts/other-id/users", token, ""))
@@ -447,12 +448,12 @@ func TestAPIv1_AdminListAccountUsers(t *testing.T) {
 }
 
 func TestAPIv1_InvalidToken(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
-	seedAPIKey(store, "admin-id", RoleStandard, token)
+	seedAPIKey(t, store, "admin-id", RoleStandard, token)
 
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, bearerRequest("GET", "/api/v1/users", "gp_wrongtokenwrongtoken12345678", ""))
@@ -463,14 +464,14 @@ func TestAPIv1_InvalidToken(t *testing.T) {
 }
 
 func TestAPIv1_CreateUser_PasswordTooShort(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
-	store.settings["min_password_length"] = "12"
+	setSetting(t, store, "min_password_length", "12")
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
-	seedAPIKey(store, "admin-id", RoleStandard, token)
+	seedAPIKey(t, store, "admin-id", RoleStandard, token)
 
 	w := httptest.NewRecorder()
 	body := `{"username":"shortpw","password":"short"}`
@@ -485,12 +486,12 @@ func TestAPIv1_CreateUser_PasswordTooShort(t *testing.T) {
 }
 
 func TestAPIv1_CreateUser_PasswordTooLong(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
-	seedAPIKey(store, "admin-id", RoleStandard, token)
+	seedAPIKey(t, store, "admin-id", RoleStandard, token)
 
 	w := httptest.NewRecorder()
 	body := `{"username":"longpw","password":"` + strings.Repeat("a", 100) + `"}`
@@ -508,15 +509,15 @@ func TestAPIv1_CreateUser_PasswordTooLong(t *testing.T) {
 }
 
 func TestAPIv1_CreateUser_LimitReached(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
-	store.settings["max_users_per_account"] = "1"
-	store.users["existing"] = &User{Username: "existing", AccountID: "admin-id"}
+	setSetting(t, store, "max_users_per_account", "1")
+	addUser(t, store, User{Username: "existing", AccountID: "admin-id"})
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
-	seedAPIKey(store, "admin-id", RoleStandard, token)
+	seedAPIKey(t, store, "admin-id", RoleStandard, token)
 
 	w := httptest.NewRecorder()
 	body := `{"username":"second","password":"longenoughpassword"}`
@@ -531,14 +532,14 @@ func TestAPIv1_CreateUser_LimitReached(t *testing.T) {
 }
 
 func TestAPIv1_UpdateSubscriptions_Overlap(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
-	store.users["user1"] = &User{Username: "user1", AccountID: "admin-id"}
+	addUser(t, store, User{Username: "user1", AccountID: "admin-id"})
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
-	seedAPIKey(store, "admin-id", RoleStandard, token)
+	seedAPIKey(t, store, "admin-id", RoleStandard, token)
 
 	w := httptest.NewRecorder()
 	body := `{"add":["https://example.com/feed"],"remove":["https://example.com/feed"]}`
@@ -553,15 +554,15 @@ func TestAPIv1_UpdateSubscriptions_Overlap(t *testing.T) {
 }
 
 func TestAPIv1_CreateUser_CreationDisabled(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
-	store.settings["allow_user_creation"] = "false"
-	store.accounts["std-id"] = &Account{ID: "std-id", Username: "stduser", PWHash: testHash("pass"), Role: RoleStandard}
+	setSetting(t, store, "allow_user_creation", "false")
+	addAccount(t, store, Account{ID: "std-id", Username: "stduser", PWHash: testHash("pass"), Role: RoleStandard})
 
 	token := "gp_bbccddee11223344aabbccdd11223344"
-	seedAPIKey(store, "std-id", RoleStandard, token)
+	seedAPIKey(t, store, "std-id", RoleStandard, token)
 
 	w := httptest.NewRecorder()
 	body := `{"username":"newuser","password":"longenoughpassword"}`
@@ -576,14 +577,14 @@ func TestAPIv1_CreateUser_CreationDisabled(t *testing.T) {
 }
 
 func TestAPIv1_CreateUser_AdminBypassesCreationDisabled(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
-	store.settings["allow_user_creation"] = "false"
+	setSetting(t, store, "allow_user_creation", "false")
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
-	seedAPIKey(store, "admin-id", RoleStandard, token)
+	seedAPIKey(t, store, "admin-id", RoleStandard, token)
 
 	w := httptest.NewRecorder()
 	body := `{"username":"newuser","password":"longenoughpassword"}`
@@ -595,12 +596,12 @@ func TestAPIv1_CreateUser_AdminBypassesCreationDisabled(t *testing.T) {
 }
 
 func TestAPIv1_AdminCreateAccount_Conflict(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
-	seedAPIKey(store, "admin-id", RoleAdmin, token)
+	seedAPIKey(t, store, "admin-id", RoleAdmin, token)
 
 	w := httptest.NewRecorder()
 	body := `{"username":"admin","password":"secret123"}`
@@ -612,12 +613,12 @@ func TestAPIv1_AdminCreateAccount_Conflict(t *testing.T) {
 }
 
 func TestAPIv1_AdminListAccountUsers_NotFound(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
-	seedAPIKey(store, "admin-id", RoleAdmin, token)
+	seedAPIKey(t, store, "admin-id", RoleAdmin, token)
 
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, bearerRequest("GET", "/api/v1/accounts/nonexistent/users", token, ""))
@@ -628,12 +629,12 @@ func TestAPIv1_AdminListAccountUsers_NotFound(t *testing.T) {
 }
 
 func TestAPIv1_AdminDeleteAccount_NotFound(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
-	seedAPIKey(store, "admin-id", RoleAdmin, token)
+	seedAPIKey(t, store, "admin-id", RoleAdmin, token)
 
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, bearerRequest("DELETE", "/api/v1/accounts/nonexistent", token, ""))
@@ -644,12 +645,12 @@ func TestAPIv1_AdminDeleteAccount_NotFound(t *testing.T) {
 }
 
 func TestAPIv1_DeleteUser_NotFound(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
-	seedAPIKey(store, "admin-id", RoleStandard, token)
+	seedAPIKey(t, store, "admin-id", RoleStandard, token)
 
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, bearerRequest("DELETE", "/api/v1/users/nonexistent", token, ""))
@@ -660,12 +661,12 @@ func TestAPIv1_DeleteUser_NotFound(t *testing.T) {
 }
 
 func TestAPIv1_GetSubscriptions_UserNotFound(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
-	seedAPIKey(store, "admin-id", RoleStandard, token)
+	seedAPIKey(t, store, "admin-id", RoleStandard, token)
 
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, bearerRequest("GET", "/api/v1/users/nonexistent/subscriptions", token, ""))
@@ -676,14 +677,14 @@ func TestAPIv1_GetSubscriptions_UserNotFound(t *testing.T) {
 }
 
 func TestAPIv1_AdminCreateAccount_PasswordTooShort(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
-	store.settings["min_password_length"] = "10"
+	setSetting(t, store, "min_password_length", "10")
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
-	seedAPIKey(store, "admin-id", RoleAdmin, token)
+	seedAPIKey(t, store, "admin-id", RoleAdmin, token)
 
 	w := httptest.NewRecorder()
 	body := `{"username":"newacct","password":"short"}`
@@ -698,12 +699,12 @@ func TestAPIv1_AdminCreateAccount_PasswordTooShort(t *testing.T) {
 }
 
 func TestAPIv1_ListUsers_Empty(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
-	seedAPIKey(store, "admin-id", RoleStandard, token)
+	seedAPIKey(t, store, "admin-id", RoleStandard, token)
 
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, bearerRequest("GET", "/api/v1/users", token, ""))
@@ -717,14 +718,14 @@ func TestAPIv1_ListUsers_Empty(t *testing.T) {
 }
 
 func TestAPIv1_GetSubscriptions_Empty(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
-	store.users["user1"] = &User{Username: "user1", AccountID: "admin-id"}
+	addUser(t, store, User{Username: "user1", AccountID: "admin-id"})
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
-	seedAPIKey(store, "admin-id", RoleStandard, token)
+	seedAPIKey(t, store, "admin-id", RoleStandard, token)
 
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, bearerRequest("GET", "/api/v1/users/user1/subscriptions", token, ""))
@@ -738,14 +739,14 @@ func TestAPIv1_GetSubscriptions_Empty(t *testing.T) {
 }
 
 func TestAPIv1_AdminCannotDeleteOtherAdmin(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
-	store.accounts["other-admin"] = &Account{ID: "other-admin", Username: "otheradmin", PWHash: testHash("pass"), Role: RoleAdmin}
+	addAccount(t, store, Account{ID: "other-admin", Username: "otheradmin", PWHash: testHash("pass"), Role: RoleAdmin})
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
-	seedAPIKey(store, "admin-id", RoleAdmin, token)
+	seedAPIKey(t, store, "admin-id", RoleAdmin, token)
 
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, bearerRequest("DELETE", "/api/v1/accounts/other-admin", token, ""))
@@ -753,18 +754,18 @@ func TestAPIv1_AdminCannotDeleteOtherAdmin(t *testing.T) {
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 (admin accounts cannot be deleted via API), got %d: %s", w.Code, w.Body.String())
 	}
-	if _, ok := store.accounts["other-admin"]; !ok {
+	if accountOf(t, store, "other-admin") == nil {
 		t.Error("other admin account should NOT have been deleted")
 	}
 }
 
 func TestAPIv1_AdminCannotDeleteSelf(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
-	seedAPIKey(store, "admin-id", RoleAdmin, token)
+	seedAPIKey(t, store, "admin-id", RoleAdmin, token)
 
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, bearerRequest("DELETE", "/api/v1/accounts/admin-id", token, ""))
@@ -772,21 +773,21 @@ func TestAPIv1_AdminCannotDeleteSelf(t *testing.T) {
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 (cannot self-delete via API), got %d: %s", w.Code, w.Body.String())
 	}
-	if _, ok := store.accounts["admin-id"]; !ok {
+	if accountOf(t, store, "admin-id") == nil {
 		t.Error("own admin account should NOT have been deleted")
 	}
 }
 
 func TestAPIv1_StandardKeyCannotAccessOtherUsersResources(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
-	store.accounts["other-id"] = &Account{ID: "other-id", Username: "other", Role: RoleStandard}
-	store.users["otheruser"] = &User{Username: "otheruser", AccountID: "other-id"}
+	addAccount(t, store, Account{ID: "other-id", Username: "other", Role: RoleStandard})
+	addUser(t, store, User{Username: "otheruser", AccountID: "other-id"})
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
-	seedAPIKey(store, "admin-id", RoleStandard, token)
+	seedAPIKey(t, store, "admin-id", RoleStandard, token)
 
 	endpoints := []struct {
 		method string
@@ -808,15 +809,15 @@ func TestAPIv1_StandardKeyCannotAccessOtherUsersResources(t *testing.T) {
 }
 
 func TestAPIv1_AdminKeyCanStillUseStandardEndpoints(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
-	store.users["myuser"] = &User{Username: "myuser", AccountID: "admin-id"}
-	store.subscriptions["myuser"] = []string{"https://example.com/feed.xml"}
+	addUser(t, store, User{Username: "myuser", AccountID: "admin-id"})
+	setSubscriptions(t, store, "myuser", []string{"https://example.com/feed.xml"})
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
-	seedAPIKey(store, "admin-id", RoleAdmin, token)
+	seedAPIKey(t, store, "admin-id", RoleAdmin, token)
 
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, bearerRequest("GET", "/api/v1/users/myuser/subscriptions", token, ""))
@@ -827,16 +828,16 @@ func TestAPIv1_AdminKeyCanStillUseStandardEndpoints(t *testing.T) {
 }
 
 func TestAPIv1_ListUsers_IncludesLastActivity(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
 	activity := time.Date(2026, 5, 28, 14, 30, 0, 0, time.UTC)
-	store.users["active"] = &User{Username: "active", AccountID: "admin-id", LastActivity: &activity}
-	store.users["inactive"] = &User{Username: "inactive", AccountID: "admin-id"}
+	addUser(t, store, User{Username: "active", AccountID: "admin-id", LastActivity: &activity})
+	addUser(t, store, User{Username: "inactive", AccountID: "admin-id"})
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
-	seedAPIKey(store, "admin-id", RoleStandard, token)
+	seedAPIKey(t, store, "admin-id", RoleStandard, token)
 
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, bearerRequest("GET", "/api/v1/users", token, ""))
@@ -869,20 +870,20 @@ func TestAPIv1_ListUsers_IncludesLastActivity(t *testing.T) {
 }
 
 func TestAPIv1_ListDevices_IncludesLastActivity(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
 	synced := time.Date(2026, 5, 27, 10, 0, 0, 0, time.UTC)
-	store.users["user1"] = &User{Username: "user1", AccountID: "admin-id"}
-	store.devices["user1"] = []Device{
+	addUser(t, store, User{Username: "user1", AccountID: "admin-id"})
+	setDevices(t, store, "user1", []Device{
 		{ID: "phone", Caption: "Phone", Type: "mobile", LastActivity: &synced},
 		{ID: "tablet", Caption: "Tablet", Type: "other"},
-	}
-	store.subscriptions["user1"] = []string{"https://example.com/feed.xml"}
+	})
+	setSubscriptions(t, store, "user1", []string{"https://example.com/feed.xml"})
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
-	seedAPIKey(store, "admin-id", RoleStandard, token)
+	seedAPIKey(t, store, "admin-id", RoleStandard, token)
 
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, bearerRequest("GET", "/api/v1/users/user1/devices", token, ""))
@@ -918,24 +919,25 @@ func TestAPIv1_ListDevices_IncludesLastActivity(t *testing.T) {
 }
 
 func TestAPIv1_ListAccounts_IncludesTimestamps(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
 	created := time.Date(2026, 1, 15, 10, 0, 0, 0, time.UTC)
 	lastLogin := time.Date(2026, 5, 28, 9, 0, 0, 0, time.UTC)
 	lastActivity := time.Date(2026, 5, 28, 14, 30, 0, 0, time.UTC)
-	store.accounts["admin-id"].CreatedAt = created
-	store.accounts["admin-id"].LastLogin = &lastLogin
-	store.accounts["admin-id"].LastActivity = &lastActivity
+	must(t, store.DeleteAccount(t.Context(), "admin-id"))
+	addAccount(t, store, Account{ID: "admin-id", Username: "admin", Role: RoleAdmin, CreatedAt: created, LastLogin: &lastLogin})
+	// An account's last activity is the latest one of its sync logins.
+	addUser(t, store, User{Username: "admin-sync", AccountID: "admin-id", LastActivity: &lastActivity})
 
-	store.accounts["new-id"] = &Account{
+	addAccount(t, store, Account{
 		ID: "new-id", Username: "newuser", Role: RoleStandard,
 		CreatedAt: time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC),
-	}
+	})
 
 	token := "gp_aabbccdd11223344aabbccdd11223344"
-	seedAPIKey(store, "admin-id", RoleAdmin, token)
+	seedAPIKey(t, store, "admin-id", RoleAdmin, token)
 
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, bearerRequest("GET", "/api/v1/accounts", token, ""))
