@@ -134,8 +134,9 @@ func TestWebAccountFromContext(t *testing.T) {
 }
 
 func TestIsLastAdmin(t *testing.T) {
-	store := newMockStore()
-	store.accounts["a1"] = &Account{ID: "a1", Username: "admin1", Role: RoleAdmin}
+	store := newFixtureStore(t)
+	must(t, store.DeleteAccount(t.Context(), "admin-id"))
+	addAccount(t, store, Account{ID: "a1", Username: "admin1", Role: RoleAdmin})
 	api := NewAPI(nil, store, noopMetrics{}, BuildInfo{}, "localhost:8080", "sqlite")
 	h := NewWebHandler(api)
 
@@ -146,14 +147,14 @@ func TestIsLastAdmin(t *testing.T) {
 	})
 
 	t.Run("not last when another admin exists", func(t *testing.T) {
-		store.accounts["a2"] = &Account{ID: "a2", Username: "admin2", Role: RoleAdmin}
+		addAccount(t, store, Account{ID: "a2", Username: "admin2", Role: RoleAdmin})
 		if h.isLastAdmin(t.Context(), "a1") {
 			t.Error("expected false when another admin exists")
 		}
 	})
 
 	t.Run("standard account is not last admin", func(t *testing.T) {
-		store.accounts["a3"] = &Account{ID: "a3", Username: "user1", Role: RoleStandard}
+		addAccount(t, store, Account{ID: "a3", Username: "user1", Role: RoleStandard})
 		if h.isLastAdmin(t.Context(), "a3") {
 			t.Error("expected false for standard account (other admins exist)")
 		}
@@ -161,7 +162,7 @@ func TestIsLastAdmin(t *testing.T) {
 }
 
 func TestWithSession_Unauthenticated(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	h := NewWebHandler(api)
 
@@ -186,10 +187,10 @@ func TestWithSession_Unauthenticated(t *testing.T) {
 }
 
 func TestWithSession_Authenticated(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	sid := "web-session-123"
-	store.accounts["admin-id"].SessionID = &sid
+	must(t, store.UpdateAccountSession(t.Context(), "admin-id", &sid, time.Now()))
 	h := NewWebHandler(api)
 
 	called := false
@@ -213,10 +214,10 @@ func TestWithSession_Authenticated(t *testing.T) {
 }
 
 func TestWithAdmin_NonAdmin(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	sid := "user-session"
-	store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid}
+	addAccount(t, store, Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid})
 	h := NewWebHandler(api)
 
 	called := false
@@ -238,10 +239,10 @@ func TestWithAdmin_NonAdmin(t *testing.T) {
 }
 
 func TestWithAdmin_Admin(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	sid := "admin-session"
-	store.accounts["admin-id"].SessionID = &sid
+	must(t, store.UpdateAccountSession(t.Context(), "admin-id", &sid, time.Now()))
 	h := NewWebHandler(api)
 
 	called := false
@@ -262,9 +263,9 @@ func TestWithAdmin_Admin(t *testing.T) {
 
 func TestSetupGuard(t *testing.T) {
 	t.Run("redirects to setup when no accounts", func(t *testing.T) {
-		store := newMockStore()
+		store := newFixtureStore(t)
 		// Remove the default admin that newTestAPI adds
-		delete(store.accounts, "admin-id")
+		must(t, store.DeleteAccount(t.Context(), "admin-id"))
 		api := NewAPI(nil, store, noopMetrics{}, BuildInfo{}, "localhost:8080", "sqlite")
 		h := NewWebHandler(api)
 
@@ -286,8 +287,8 @@ func TestSetupGuard(t *testing.T) {
 	})
 
 	t.Run("passes through for setup path", func(t *testing.T) {
-		store := newMockStore()
-		delete(store.accounts, "admin-id")
+		store := newFixtureStore(t)
+		must(t, store.DeleteAccount(t.Context(), "admin-id"))
 		api := NewAPI(nil, store, noopMetrics{}, BuildInfo{}, "localhost:8080", "sqlite")
 		h := NewWebHandler(api)
 
@@ -308,8 +309,8 @@ func TestSetupGuard(t *testing.T) {
 	})
 
 	t.Run("passes through for API paths", func(t *testing.T) {
-		store := newMockStore()
-		delete(store.accounts, "admin-id")
+		store := newFixtureStore(t)
+		must(t, store.DeleteAccount(t.Context(), "admin-id"))
 		api := NewAPI(nil, store, noopMetrics{}, BuildInfo{}, "localhost:8080", "sqlite")
 		h := NewWebHandler(api)
 
@@ -330,8 +331,8 @@ func TestSetupGuard(t *testing.T) {
 	})
 
 	t.Run("passes through for login path", func(t *testing.T) {
-		store := newMockStore()
-		delete(store.accounts, "admin-id")
+		store := newFixtureStore(t)
+		must(t, store.DeleteAccount(t.Context(), "admin-id"))
 		api := NewAPI(nil, store, noopMetrics{}, BuildInfo{}, "localhost:8080", "sqlite")
 		h := NewWebHandler(api)
 
@@ -352,7 +353,7 @@ func TestSetupGuard(t *testing.T) {
 	})
 
 	t.Run("passes through when accounts exist", func(t *testing.T) {
-		store := newMockStore()
+		store := newFixtureStore(t)
 		api := newTestAPI(store)
 		h := NewWebHandler(api)
 
@@ -374,8 +375,8 @@ func TestSetupGuard(t *testing.T) {
 }
 
 func TestUserBelongsToAccount(t *testing.T) {
-	store := newMockStore()
-	store.users["alice"] = &User{Username: "alice", PWHash: "hash", AccountID: "acc1"}
+	store := newFixtureStore(t)
+	addUser(t, store, User{Username: "alice", PWHash: "hash", AccountID: "acc1"})
 	api := newTestAPI(store)
 	h := NewWebHandler(api)
 
@@ -399,7 +400,7 @@ func TestUserBelongsToAccount(t *testing.T) {
 }
 
 func TestIsSettingEnabled(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	h := NewWebHandler(api)
 
@@ -410,14 +411,14 @@ func TestIsSettingEnabled(t *testing.T) {
 	})
 
 	t.Run("returns false when setting is false", func(t *testing.T) {
-		store.settings[SettingSelfRegistration] = "false"
+		setSetting(t, store, SettingSelfRegistration, "false")
 		if settingEnabled(t.Context(), h.store, SettingSelfRegistration) {
 			t.Error("expected false for disabled setting")
 		}
 	})
 
 	t.Run("returns true when setting is true", func(t *testing.T) {
-		store.settings[SettingSelfRegistration] = "true"
+		setSetting(t, store, SettingSelfRegistration, "true")
 		if !settingEnabled(t.Context(), h.store, SettingSelfRegistration) {
 			t.Error("expected true for enabled setting")
 		}
@@ -425,7 +426,7 @@ func TestIsSettingEnabled(t *testing.T) {
 }
 
 func TestHandleRegisterPage_Disabled(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	h := NewWebHandler(api)
 
@@ -442,8 +443,8 @@ func TestHandleRegisterPage_Disabled(t *testing.T) {
 }
 
 func TestHandleRegisterPage_Enabled(t *testing.T) {
-	store := newMockStore()
-	store.settings[SettingSelfRegistration] = "true"
+	store := newFixtureStore(t)
+	setSetting(t, store, SettingSelfRegistration, "true")
 	api := newTestAPI(store)
 	h := NewWebHandler(api)
 
@@ -460,7 +461,7 @@ func TestHandleRegisterPage_Enabled(t *testing.T) {
 }
 
 func TestHandleRegisterSubmit_Disabled(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	h := NewWebHandler(api)
 
@@ -472,14 +473,14 @@ func TestHandleRegisterSubmit_Disabled(t *testing.T) {
 	if w.Code != http.StatusSeeOther {
 		t.Errorf("status = %d, want %d", w.Code, http.StatusSeeOther)
 	}
-	if len(store.accounts) != 1 { // only the test admin
+	if accountCount(t, store) != 1 { // only the test admin
 		t.Errorf("account was created despite registration being disabled")
 	}
 }
 
 func TestHandleRegisterSubmit_Success(t *testing.T) {
-	store := newMockStore()
-	store.settings[SettingSelfRegistration] = "true"
+	store := newFixtureStore(t)
+	setSetting(t, store, SettingSelfRegistration, "true")
 	api := newTestAPI(store)
 	h := NewWebHandler(api)
 
@@ -506,8 +507,8 @@ func TestHandleRegisterSubmit_Success(t *testing.T) {
 }
 
 func TestHandleRegisterSubmit_PasswordMismatch(t *testing.T) {
-	store := newMockStore()
-	store.settings[SettingSelfRegistration] = "true"
+	store := newFixtureStore(t)
+	setSetting(t, store, SettingSelfRegistration, "true")
 	api := newTestAPI(store)
 	h := NewWebHandler(api)
 
@@ -519,14 +520,14 @@ func TestHandleRegisterSubmit_PasswordMismatch(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("status = %d, want %d (renders error page)", w.Code, http.StatusOK)
 	}
-	if len(store.accounts) != 1 { // only the test admin
+	if accountCount(t, store) != 1 { // only the test admin
 		t.Errorf("account was created despite password mismatch")
 	}
 }
 
 func TestHandleRegisterSubmit_DuplicateUsername(t *testing.T) {
-	store := newMockStore()
-	store.settings[SettingSelfRegistration] = "true"
+	store := newFixtureStore(t)
+	setSetting(t, store, SettingSelfRegistration, "true")
 	api := newTestAPI(store)
 	h := NewWebHandler(api)
 
@@ -541,11 +542,11 @@ func TestHandleRegisterSubmit_DuplicateUsername(t *testing.T) {
 }
 
 func TestHandleSelfCreateUser_Disabled(t *testing.T) {
-	store := newMockStore()
-	store.settings["allow_user_creation"] = "false"
+	store := newFixtureStore(t)
+	setSetting(t, store, "allow_user_creation", "false")
 	api := newTestAPI(store)
 	sid := "user-session"
-	store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid}
+	addAccount(t, store, Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid})
 	h := NewWebHandler(api)
 
 	r := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader("username=gpuser1&password=testpass1"))
@@ -568,11 +569,11 @@ func TestHandleSelfCreateUser_Disabled(t *testing.T) {
 }
 
 func TestHandleSelfCreateUser_Enabled(t *testing.T) {
-	store := newMockStore()
-	store.settings[SettingAllowUserCreation] = "true"
+	store := newFixtureStore(t)
+	setSetting(t, store, SettingAllowUserCreation, "true")
 	api := newTestAPI(store)
 	sid := "user-session"
-	store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid}
+	addAccount(t, store, Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid})
 	h := NewWebHandler(api)
 
 	r := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader("username=gpuser1&password=testpass1"))
@@ -592,11 +593,11 @@ func TestHandleSelfCreateUser_Enabled(t *testing.T) {
 }
 
 func TestHandleSelfCreateUser_AdminAlwaysAllowed(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	// allow_user_creation is NOT enabled
 	api := newTestAPI(store)
 	sid := "admin-session"
-	store.accounts["admin-id"].SessionID = &sid
+	must(t, store.UpdateAccountSession(t.Context(), "admin-id", &sid, time.Now()))
 	h := NewWebHandler(api)
 
 	r := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader("username=gpuser1&password=testpass1"))
@@ -616,10 +617,10 @@ func TestHandleSelfCreateUser_AdminAlwaysAllowed(t *testing.T) {
 }
 
 func TestHandleSettingsSave(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	sid := "admin-session"
-	store.accounts["admin-id"].SessionID = &sid
+	must(t, store.UpdateAccountSession(t.Context(), "admin-id", &sid, time.Now()))
 	h := NewWebHandler(api)
 
 	t.Run("enable both settings", func(t *testing.T) {
@@ -634,11 +635,11 @@ func TestHandleSettingsSave(t *testing.T) {
 		if w.Code != http.StatusSeeOther {
 			t.Errorf("status = %d, want %d", w.Code, http.StatusSeeOther)
 		}
-		if store.settings[SettingSelfRegistration] != "true" {
-			t.Errorf("self_registration = %q, want true", store.settings[SettingSelfRegistration])
+		if settingOf(t, store, SettingSelfRegistration) != "true" {
+			t.Errorf("self_registration = %q, want true", settingOf(t, store, SettingSelfRegistration))
 		}
-		if store.settings[SettingAllowUserCreation] != "true" {
-			t.Errorf("allow_user_creation = %q, want true", store.settings[SettingAllowUserCreation])
+		if settingOf(t, store, SettingAllowUserCreation) != "true" {
+			t.Errorf("allow_user_creation = %q, want true", settingOf(t, store, SettingAllowUserCreation))
 		}
 	})
 
@@ -651,17 +652,17 @@ func TestHandleSettingsSave(t *testing.T) {
 		handler := h.withAdmin(h.handleSettingsSave)
 		handler(w, r)
 
-		if store.settings[SettingSelfRegistration] != "false" {
-			t.Errorf("self_registration = %q, want false", store.settings[SettingSelfRegistration])
+		if settingOf(t, store, SettingSelfRegistration) != "false" {
+			t.Errorf("self_registration = %q, want false", settingOf(t, store, SettingSelfRegistration))
 		}
-		if store.settings[SettingAllowUserCreation] != "false" {
-			t.Errorf("allow_user_creation = %q, want false", store.settings[SettingAllowUserCreation])
+		if settingOf(t, store, SettingAllowUserCreation) != "false" {
+			t.Errorf("allow_user_creation = %q, want false", settingOf(t, store, SettingAllowUserCreation))
 		}
 	})
 }
 
 func TestUserLimitReached(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	h := NewWebHandler(api)
 
@@ -672,39 +673,39 @@ func TestUserLimitReached(t *testing.T) {
 	})
 
 	t.Run("limit 0 means unlimited", func(t *testing.T) {
-		store.settings[SettingMaxUsersPerAccount] = "0"
-		store.users["u1"] = &User{Username: "u1", AccountID: "admin-id"}
-		store.users["u2"] = &User{Username: "u2", AccountID: "admin-id"}
+		setSetting(t, store, SettingMaxUsersPerAccount, "0")
+		addUser(t, store, User{Username: "u1", AccountID: "admin-id"})
+		addUser(t, store, User{Username: "u2", AccountID: "admin-id"})
 		if userLimitReached(t.Context(), h.store, "admin-id") {
 			t.Error("expected false when limit is 0 (unlimited)")
 		}
 	})
 
 	t.Run("under limit", func(t *testing.T) {
-		store.settings[SettingMaxUsersPerAccount] = "3"
+		setSetting(t, store, SettingMaxUsersPerAccount, "3")
 		if userLimitReached(t.Context(), h.store, "admin-id") {
 			t.Error("expected false when under limit (2 < 3)")
 		}
 	})
 
 	t.Run("at limit", func(t *testing.T) {
-		store.settings[SettingMaxUsersPerAccount] = "2"
+		setSetting(t, store, SettingMaxUsersPerAccount, "2")
 		if !userLimitReached(t.Context(), h.store, "admin-id") {
 			t.Error("expected true when at limit (2 >= 2)")
 		}
 	})
 
 	t.Run("over limit", func(t *testing.T) {
-		store.settings[SettingMaxUsersPerAccount] = "1"
+		setSetting(t, store, SettingMaxUsersPerAccount, "1")
 		if !userLimitReached(t.Context(), h.store, "admin-id") {
 			t.Error("expected true when over limit (2 >= 1)")
 		}
 	})
 
 	t.Run("limit applies per account", func(t *testing.T) {
-		store.settings[SettingMaxUsersPerAccount] = "2"
-		store.accounts["other-id"] = &Account{ID: "other-id", Username: "other", Role: RoleStandard}
-		store.users["u3"] = &User{Username: "u3", AccountID: "other-id"}
+		setSetting(t, store, SettingMaxUsersPerAccount, "2")
+		addAccount(t, store, Account{ID: "other-id", Username: "other", Role: RoleStandard})
+		addUser(t, store, User{Username: "u3", AccountID: "other-id"})
 		// other-id has 1 user, limit is 2
 		if userLimitReached(t.Context(), h.store, "other-id") {
 			t.Error("expected false for other account (1 < 2)")
@@ -713,13 +714,13 @@ func TestUserLimitReached(t *testing.T) {
 }
 
 func TestHandleSelfCreateUser_LimitReached(t *testing.T) {
-	store := newMockStore()
-	store.settings[SettingAllowUserCreation] = "true"
-	store.settings[SettingMaxUsersPerAccount] = "1"
+	store := newFixtureStore(t)
+	setSetting(t, store, SettingAllowUserCreation, "true")
+	setSetting(t, store, SettingMaxUsersPerAccount, "1")
 	api := newTestAPI(store)
 	sid := "user-session"
-	store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid}
-	store.users["existing"] = &User{Username: "existing", AccountID: "u1"}
+	addAccount(t, store, Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid})
+	addUser(t, store, User{Username: "existing", AccountID: "u1"})
 	h := NewWebHandler(api)
 
 	r := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader("username=newuser&password=testpass1"))
@@ -742,10 +743,10 @@ func TestHandleSelfCreateUser_LimitReached(t *testing.T) {
 }
 
 func TestHandleSettingsSave_MaxUsers(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	sid := "admin-session"
-	store.accounts["admin-id"].SessionID = &sid
+	must(t, store.UpdateAccountSession(t.Context(), "admin-id", &sid, time.Now()))
 	h := NewWebHandler(api)
 
 	r := httptest.NewRequest(http.MethodPost, "/admin/settings", strings.NewReader("max_users_per_account=5&session_max_age_hours=168&episode_retention_days=90&inactive_account_days=0"))
@@ -756,13 +757,13 @@ func TestHandleSettingsSave_MaxUsers(t *testing.T) {
 	handler := h.withAdmin(h.handleSettingsSave)
 	handler(w, r)
 
-	if store.settings[SettingMaxUsersPerAccount] != "5" {
-		t.Errorf("max_users_per_account = %q, want 5", store.settings[SettingMaxUsersPerAccount])
+	if settingOf(t, store, SettingMaxUsersPerAccount) != "5" {
+		t.Errorf("max_users_per_account = %q, want 5", settingOf(t, store, SettingMaxUsersPerAccount))
 	}
 }
 
 func TestCheckPasswordLength(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	h := NewWebHandler(api)
 
@@ -776,14 +777,14 @@ func TestCheckPasswordLength(t *testing.T) {
 	})
 
 	t.Run("limit 0 enforces default minimum 8", func(t *testing.T) {
-		store.settings[SettingMinPasswordLength] = "0"
+		setSetting(t, store, SettingMinPasswordLength, "0")
 		if msg := h.checkPasswordLength(t.Context(), "short"); msg == "" {
 			t.Error("expected error for password shorter than default minimum 8")
 		}
 	})
 
 	t.Run("password too short", func(t *testing.T) {
-		store.settings[SettingMinPasswordLength] = "8"
+		setSetting(t, store, SettingMinPasswordLength, "8")
 		msg := h.checkPasswordLength(t.Context(), "short")
 		if msg == "" {
 			t.Error("expected error for short password")
@@ -794,28 +795,28 @@ func TestCheckPasswordLength(t *testing.T) {
 	})
 
 	t.Run("password exactly at minimum", func(t *testing.T) {
-		store.settings[SettingMinPasswordLength] = "8"
+		setSetting(t, store, SettingMinPasswordLength, "8")
 		if msg := h.checkPasswordLength(t.Context(), "12345678"); msg != "" {
 			t.Errorf("expected empty for exact-length password, got %q", msg)
 		}
 	})
 
 	t.Run("password over minimum", func(t *testing.T) {
-		store.settings[SettingMinPasswordLength] = "8"
+		setSetting(t, store, SettingMinPasswordLength, "8")
 		if msg := h.checkPasswordLength(t.Context(), "longenoughpassword"); msg != "" {
 			t.Errorf("expected empty for long password, got %q", msg)
 		}
 	})
 
 	t.Run("password exactly at bcrypt limit", func(t *testing.T) {
-		store.settings[SettingMinPasswordLength] = "8"
+		setSetting(t, store, SettingMinPasswordLength, "8")
 		if msg := h.checkPasswordLength(t.Context(), strings.Repeat("a", 72)); msg != "" {
 			t.Errorf("expected empty for 72-byte password, got %q", msg)
 		}
 	})
 
 	t.Run("password over bcrypt limit", func(t *testing.T) {
-		store.settings[SettingMinPasswordLength] = "8"
+		setSetting(t, store, SettingMinPasswordLength, "8")
 		msg := h.checkPasswordLength(t.Context(), strings.Repeat("a", 73))
 		if msg == "" {
 			t.Fatal("expected error for 73-byte password")
@@ -826,7 +827,7 @@ func TestCheckPasswordLength(t *testing.T) {
 	})
 
 	t.Run("multi-byte password over bcrypt limit", func(t *testing.T) {
-		store.settings[SettingMinPasswordLength] = "8"
+		setSetting(t, store, SettingMinPasswordLength, "8")
 		// 40 runes, 80 bytes: under any sane rune limit, over the bcrypt one.
 		if msg := h.checkPasswordLength(t.Context(), strings.Repeat("ä", 40)); msg == "" {
 			t.Error("expected error for password exceeding 72 bytes in UTF-8")
@@ -835,9 +836,9 @@ func TestCheckPasswordLength(t *testing.T) {
 }
 
 func TestHandleRegisterSubmit_PasswordTooShort(t *testing.T) {
-	store := newMockStore()
-	store.settings[SettingSelfRegistration] = "true"
-	store.settings[SettingMinPasswordLength] = "10"
+	store := newFixtureStore(t)
+	setSetting(t, store, SettingSelfRegistration, "true")
+	setSetting(t, store, SettingMinPasswordLength, "10")
 	api := newTestAPI(store)
 	h := NewWebHandler(api)
 
@@ -849,14 +850,14 @@ func TestHandleRegisterSubmit_PasswordTooShort(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("status = %d, want %d (renders error page)", w.Code, http.StatusOK)
 	}
-	if len(store.accounts) != 1 {
+	if accountCount(t, store) != 1 {
 		t.Error("account should not have been created")
 	}
 }
 
 func TestHandleRegisterSubmit_PasswordTooLong(t *testing.T) {
-	store := newMockStore()
-	store.settings[SettingSelfRegistration] = "true"
+	store := newFixtureStore(t)
+	setSetting(t, store, SettingSelfRegistration, "true")
 	api := newTestAPI(store)
 	h := NewWebHandler(api)
 
@@ -870,16 +871,16 @@ func TestHandleRegisterSubmit_PasswordTooLong(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("status = %d, want %d (renders error page)", w.Code, http.StatusOK)
 	}
-	if len(store.accounts) != 1 {
+	if accountCount(t, store) != 1 {
 		t.Error("account should not have been created")
 	}
 }
 
 func TestHandleSetupSubmit_PasswordTooLong(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	h := NewWebHandler(api)
-	clear(store.accounts) // first-run setup only happens with no accounts
+	must(t, store.DeleteAccount(t.Context(), "admin-id")) // first-run setup only happens with no accounts
 
 	long := strings.Repeat("a", 100)
 	body := "username=admin&password=" + long + "&password2=" + long
@@ -891,18 +892,18 @@ func TestHandleSetupSubmit_PasswordTooLong(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("status = %d, want %d (renders error page)", w.Code, http.StatusOK)
 	}
-	if len(store.accounts) != 0 {
+	if accountCount(t, store) != 0 {
 		t.Error("admin account should not have been created")
 	}
 }
 
 func TestHandleSelfCreateUser_PasswordTooShort(t *testing.T) {
-	store := newMockStore()
-	store.settings[SettingAllowUserCreation] = "true"
-	store.settings[SettingMinPasswordLength] = "10"
+	store := newFixtureStore(t)
+	setSetting(t, store, SettingAllowUserCreation, "true")
+	setSetting(t, store, SettingMinPasswordLength, "10")
 	api := newTestAPI(store)
 	sid := "user-session"
-	store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid}
+	addAccount(t, store, Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid})
 	h := NewWebHandler(api)
 
 	r := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader("username=gpuser1&password=short"))
@@ -925,8 +926,8 @@ func TestHandleSelfCreateUser_PasswordTooShort(t *testing.T) {
 }
 
 func TestSetupGuard_RegisterPath(t *testing.T) {
-	store := newMockStore()
-	delete(store.accounts, "admin-id")
+	store := newFixtureStore(t)
+	must(t, store.DeleteAccount(t.Context(), "admin-id"))
 	api := NewAPI(nil, store, noopMetrics{}, BuildInfo{}, "localhost:8080", "sqlite")
 	h := NewWebHandler(api)
 
@@ -971,10 +972,10 @@ func TestToInt64(t *testing.T) {
 }
 
 func TestHandleSelfAccountPage(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	sid := "user-session"
-	store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid}
+	addAccount(t, store, Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid})
 	handler := api.Handler()
 
 	r := httptest.NewRequest(http.MethodGet, "/account", nil)
@@ -994,10 +995,10 @@ func TestHandleSelfAccountPage(t *testing.T) {
 }
 
 func TestHandleSelfChangeAccountPassword(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	sid := "user-session"
-	store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: testHash("oldpass"), Role: RoleStandard, SessionID: &sid}
+	addAccount(t, store, Account{ID: "u1", Username: "user1", PWHash: testHash("oldpass"), Role: RoleStandard, SessionID: &sid})
 	handler := api.Handler()
 
 	t.Run("wrong current password", func(t *testing.T) {
@@ -1049,13 +1050,13 @@ func TestHandleSelfChangeAccountPassword(t *testing.T) {
 		if !strings.Contains(loc, "flash=") {
 			t.Errorf("expected flash in redirect, got %q", loc)
 		}
-		if !checkPassword(store.accounts["u1"].PWHash, "newpass123") {
+		if !checkPassword(accountOf(t, store, "u1").PWHash, "newpass123") {
 			t.Error("password should be updated in store")
 		}
 	})
 
 	t.Run("password too short", func(t *testing.T) {
-		store.settings["min_password_length"] = "10"
+		setSetting(t, store, "min_password_length", "10")
 		body := withCSRF("user-session", "current_password=newpass123&password=short&password2=short")
 		r := httptest.NewRequest(http.MethodPost, "/account/password", strings.NewReader(body))
 		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -1070,18 +1071,18 @@ func TestHandleSelfChangeAccountPassword(t *testing.T) {
 		if !strings.Contains(loc, "error=") {
 			t.Errorf("expected error for short password, got %q", loc)
 		}
-		delete(store.settings, "min_password_length")
+		setSetting(t, store, "min_password_length", "")
 	})
 }
 
 func TestHandleSelfDeleteAccount(t *testing.T) {
 	t.Run("standard user can delete own account", func(t *testing.T) {
-		store := newMockStore()
+		store := newFixtureStore(t)
 		api := newTestAPI(store)
 		sid := "user-session"
-		store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid}
-		store.users["gpuser1"] = &User{Username: "gpuser1", PWHash: "hash", AccountID: "u1"}
-		store.subscriptions["gpuser1"] = []string{"http://feed.com"}
+		addAccount(t, store, Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid})
+		addUser(t, store, User{Username: "gpuser1", PWHash: "hash", AccountID: "u1"})
+		setSubscriptions(t, store, "gpuser1", []string{"http://feed.com"})
 		handler := api.Handler()
 
 		r := httptest.NewRequest(http.MethodPost, "/account/delete", strings.NewReader(withCSRF("user-session", "")))
@@ -1096,22 +1097,22 @@ func TestHandleSelfDeleteAccount(t *testing.T) {
 		if w.Header().Get("Location") != "/login" {
 			t.Errorf("expected redirect to /login, got %q", w.Header().Get("Location"))
 		}
-		if _, ok := store.accounts["u1"]; ok {
+		if accountOf(t, store, "u1") != nil {
 			t.Error("account should be deleted")
 		}
-		if _, ok := store.users["gpuser1"]; ok {
+		if userOf(t, store, "gpuser1") != nil {
 			t.Error("gpodder user should be cascade deleted")
 		}
-		if _, ok := store.subscriptions["gpuser1"]; ok {
+		if len(subscriptionsOf(t, store, "gpuser1")) > 0 {
 			t.Error("subscriptions should be cascade deleted")
 		}
 	})
 
 	t.Run("last admin cannot delete own account", func(t *testing.T) {
-		store := newMockStore()
+		store := newFixtureStore(t)
 		api := newTestAPI(store)
 		sid := "admin-session"
-		store.accounts["admin-id"] = &Account{ID: "admin-id", Username: "admin", PWHash: testHash("admin"), Role: RoleAdmin, SessionID: &sid}
+		addAccount(t, store, Account{ID: "admin-id", Username: "admin", PWHash: testHash("admin"), Role: RoleAdmin, SessionID: &sid})
 		handler := api.Handler()
 
 		r := httptest.NewRequest(http.MethodPost, "/account/delete", strings.NewReader(withCSRF("admin-session", "")))
@@ -1127,19 +1128,19 @@ func TestHandleSelfDeleteAccount(t *testing.T) {
 		if !strings.Contains(loc, "error=") {
 			t.Errorf("expected error for last admin, got %q", loc)
 		}
-		if _, ok := store.accounts["admin-id"]; !ok {
+		if accountOf(t, store, "admin-id") == nil {
 			t.Error("last admin account should not be deleted")
 		}
 	})
 }
 
 func TestHandleSelfImportOPML(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	sid := "user-session"
-	store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid}
-	store.users["gpuser1"] = &User{Username: "gpuser1", PWHash: "hash", AccountID: "u1"}
-	store.devices["gpuser1"] = []Device{{ID: "phone", Type: "mobile"}}
+	addAccount(t, store, Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid})
+	addUser(t, store, User{Username: "gpuser1", PWHash: "hash", AccountID: "u1"})
+	setDevices(t, store, "gpuser1", []Device{{ID: "phone", Type: "mobile"}})
 	handler := api.Handler()
 
 	t.Run("imports flat OPML", func(t *testing.T) {
@@ -1165,18 +1166,18 @@ func TestHandleSelfImportOPML(t *testing.T) {
 		if !strings.Contains(loc, "flash=") {
 			t.Errorf("expected flash in redirect, got %q", loc)
 		}
-		subs := store.subscriptions["gpuser1"]
+		subs := subscriptionsOf(t, store, "gpuser1")
 		if len(subs) != 2 {
 			t.Errorf("expected 2 imported subscriptions, got %d: %v", len(subs), subs)
 		}
 	})
 
 	t.Run("imports nested OPML", func(t *testing.T) {
-		store2 := newMockStore()
+		store2 := newFixtureStore(t)
 		api2 := newTestAPI(store2)
 		sid2 := "user-session"
-		store2.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid2}
-		store2.users["gpuser1"] = &User{Username: "gpuser1", PWHash: "hash", AccountID: "u1"}
+		addAccount(t, store2, Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid2})
+		addUser(t, store2, User{Username: "gpuser1", PWHash: "hash", AccountID: "u1"})
 		handler2 := api2.Handler()
 
 		opml := `<?xml version="1.0" encoding="UTF-8"?>
@@ -1201,7 +1202,7 @@ func TestHandleSelfImportOPML(t *testing.T) {
 		if w.Code != http.StatusSeeOther {
 			t.Fatalf("status = %d, want %d", w.Code, http.StatusSeeOther)
 		}
-		subs := store2.subscriptions["gpuser1"]
+		subs := subscriptionsOf(t, store2, "gpuser1")
 		if len(subs) != 3 {
 			t.Errorf("expected 3 imported subscriptions from nested OPML, got %d: %v", len(subs), subs)
 		}
@@ -1225,7 +1226,7 @@ func TestHandleSelfImportOPML(t *testing.T) {
 	})
 
 	t.Run("forbidden for other user", func(t *testing.T) {
-		store.users["otheruser"] = &User{Username: "otheruser", PWHash: "hash", AccountID: "other-account"}
+		addUser(t, store, User{Username: "otheruser", PWHash: "hash", AccountID: "other-account"})
 		opml := `<?xml version="1.0"?><opml version="2.0"><body><outline type="rss" xmlUrl="http://x.com"/></body></opml>`
 		body, contentType := createMultipartFileWithCSRF(t, "file", "subs.opml", opml, "user-session", "")
 		r := httptest.NewRequest(http.MethodPost, "/users/otheruser/subscriptions/import", body)
@@ -1244,12 +1245,12 @@ func TestHandleSelfImportOPML(t *testing.T) {
 }
 
 func TestHandleSelfAddSubscription(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	sid := "user-session"
-	store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid}
-	store.users["gpuser1"] = &User{Username: "gpuser1", PWHash: "hash", AccountID: "u1"}
-	store.devices["gpuser1"] = []Device{{ID: "phone", Type: "mobile"}}
+	addAccount(t, store, Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid})
+	addUser(t, store, User{Username: "gpuser1", PWHash: "hash", AccountID: "u1"})
+	setDevices(t, store, "gpuser1", []Device{{ID: "phone", Type: "mobile"}})
 	handler := api.Handler()
 
 	t.Run("adds subscription to specified device", func(t *testing.T) {
@@ -1263,7 +1264,7 @@ func TestHandleSelfAddSubscription(t *testing.T) {
 		if w.Code != http.StatusSeeOther {
 			t.Fatalf("status = %d, want %d", w.Code, http.StatusSeeOther)
 		}
-		subs := store.subscriptions["gpuser1"]
+		subs := subscriptionsOf(t, store, "gpuser1")
 		var found bool
 		for _, s := range subs {
 			if s == "http://newpod.com/feed" {
@@ -1286,7 +1287,7 @@ func TestHandleSelfAddSubscription(t *testing.T) {
 		if w.Code != http.StatusSeeOther {
 			t.Fatalf("status = %d, want %d", w.Code, http.StatusSeeOther)
 		}
-		subs := store.subscriptions["gpuser1"]
+		subs := subscriptionsOf(t, store, "gpuser1")
 		var found bool
 		for _, s := range subs {
 			if s == "http://another.com/feed" {
@@ -1316,7 +1317,7 @@ func TestHandleSelfAddSubscription(t *testing.T) {
 	})
 
 	t.Run("forbidden for other user", func(t *testing.T) {
-		store.users["otheruser"] = &User{Username: "otheruser", PWHash: "hash", AccountID: "other-account"}
+		addUser(t, store, User{Username: "otheruser", PWHash: "hash", AccountID: "other-account"})
 		body := withCSRF("user-session", "url=http://evil.com/feed&device=phone")
 		r := httptest.NewRequest(http.MethodPost, "/users/otheruser/subscriptions/add", strings.NewReader(body))
 		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -1334,13 +1335,13 @@ func TestHandleSelfAddSubscription(t *testing.T) {
 }
 
 func TestHandleSelfDeleteSubscription(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	sid := "user-session"
-	store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid}
-	store.users["gpuser1"] = &User{Username: "gpuser1", PWHash: "hash", AccountID: "u1"}
-	store.devices["gpuser1"] = []Device{{ID: "phone", Type: "mobile"}, {ID: "laptop", Type: "desktop"}}
-	store.subscriptions["gpuser1"] = []string{"http://feed1.com", "http://feed2.com", "http://feed3.com"}
+	addAccount(t, store, Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid})
+	addUser(t, store, User{Username: "gpuser1", PWHash: "hash", AccountID: "u1"})
+	setDevices(t, store, "gpuser1", []Device{{ID: "phone", Type: "mobile"}, {ID: "laptop", Type: "desktop"}})
+	setSubscriptions(t, store, "gpuser1", []string{"http://feed1.com", "http://feed2.com", "http://feed3.com"})
 	handler := api.Handler()
 
 	t.Run("removes subscription", func(t *testing.T) {
@@ -1354,18 +1355,18 @@ func TestHandleSelfDeleteSubscription(t *testing.T) {
 		if w.Code != http.StatusSeeOther {
 			t.Fatalf("status = %d, want %d", w.Code, http.StatusSeeOther)
 		}
-		for _, s := range store.subscriptions["gpuser1"] {
+		for _, s := range subscriptionsOf(t, store, "gpuser1") {
 			if s == "http://feed1.com" {
 				t.Error("feed1 should be removed")
 			}
 		}
-		if len(store.subscriptions["gpuser1"]) != 2 {
-			t.Errorf("should have 2 subs remaining, got %d", len(store.subscriptions["gpuser1"]))
+		if len(subscriptionsOf(t, store, "gpuser1")) != 2 {
+			t.Errorf("should have 2 subs remaining, got %d", len(subscriptionsOf(t, store, "gpuser1")))
 		}
 	})
 
 	t.Run("forbidden for other user's data", func(t *testing.T) {
-		store.users["otheruser"] = &User{Username: "otheruser", PWHash: "hash", AccountID: "other-account"}
+		addUser(t, store, User{Username: "otheruser", PWHash: "hash", AccountID: "other-account"})
 		body := withCSRF("user-session", "url=http://feed2.com")
 		r := httptest.NewRequest(http.MethodPost, "/users/otheruser/subscriptions/delete-one", strings.NewReader(body))
 		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -1383,14 +1384,14 @@ func TestHandleSelfDeleteSubscription(t *testing.T) {
 }
 
 func TestHandleAdminDeleteAPIKey(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
 	sid := "admin-session"
-	store.accounts["admin-id"].SessionID = &sid
+	must(t, store.UpdateAccountSession(t.Context(), "admin-id", &sid, time.Now()))
 
-	store.apiKeys = append(store.apiKeys, APIKey{
+	addAPIKey(t, store, APIKey{
 		ID: "key-to-revoke", AccountID: "admin-id", Name: "victim-key",
 		Prefix: "gp_aaaa0000", Hash: "h", Role: RoleStandard,
 	})
@@ -1424,7 +1425,7 @@ func TestHandleAdminDeleteAPIKey(t *testing.T) {
 	})
 
 	t.Run("cannot revoke key from different account", func(t *testing.T) {
-		store.apiKeys = append(store.apiKeys, APIKey{
+		addAPIKey(t, store, APIKey{
 			ID: "other-key", AccountID: "other-account", Name: "not-mine",
 			Prefix: "gp_bbbb0000", Hash: "h", Role: RoleStandard,
 		})
@@ -1444,14 +1445,14 @@ func TestHandleAdminDeleteAPIKey(t *testing.T) {
 }
 
 func TestHandleAccountEditPage_ShowsAPIKeys(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
 	sid := "admin-session"
-	store.accounts["admin-id"].SessionID = &sid
+	must(t, store.UpdateAccountSession(t.Context(), "admin-id", &sid, time.Now()))
 
-	store.apiKeys = append(store.apiKeys, APIKey{
+	addAPIKey(t, store, APIKey{
 		ID: "visible-key", AccountID: "admin-id", Name: "my-automation",
 		Prefix: "gp_cccc0000", Hash: "h", Role: RoleStandard,
 	})
@@ -1476,17 +1477,17 @@ func TestHandleAccountEditPage_ShowsAPIKeys(t *testing.T) {
 }
 
 func TestHandleCreateAPIKey_LimitEnforced(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
 	sid := "user-session"
-	store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid}
-	store.settings[SettingAllowAPIKeys] = "true"
-	store.settings[SettingMaxAPIKeys] = "2"
+	addAccount(t, store, Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid})
+	setSetting(t, store, SettingAllowAPIKeys, "true")
+	setSetting(t, store, SettingMaxAPIKeys, "2")
 
 	for i := range 2 {
-		store.apiKeys = append(store.apiKeys, APIKey{
+		addAPIKey(t, store, APIKey{
 			ID: fmt.Sprintf("key-%d", i), AccountID: "u1", Name: fmt.Sprintf("key%d", i),
 			Prefix: fmt.Sprintf("gp_%07d", i), Hash: "h", Role: RoleStandard,
 		})
@@ -1514,16 +1515,16 @@ func TestHandleCreateAPIKey_LimitEnforced(t *testing.T) {
 }
 
 func TestHandleCreateAPIKey_AdminBypassesLimit(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
 	sid := "admin-session"
-	store.accounts["admin-id"].SessionID = &sid
-	store.settings[SettingAllowAPIKeys] = "true"
-	store.settings[SettingMaxAPIKeys] = "1"
+	must(t, store.UpdateAccountSession(t.Context(), "admin-id", &sid, time.Now()))
+	setSetting(t, store, SettingAllowAPIKeys, "true")
+	setSetting(t, store, SettingMaxAPIKeys, "1")
 
-	store.apiKeys = append(store.apiKeys, APIKey{
+	addAPIKey(t, store, APIKey{
 		ID: "existing", AccountID: "admin-id", Name: "existing",
 		Prefix: "gp_aaaa0000", Hash: "h", Role: RoleAdmin,
 	})
@@ -1550,14 +1551,14 @@ func TestHandleCreateAPIKey_AdminBypassesLimit(t *testing.T) {
 }
 
 func TestHandleCreateAPIKey_ZeroSettingUsesDefault(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
 	sid := "user-session"
-	store.accounts["u1"] = &Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid}
-	store.settings[SettingAllowAPIKeys] = "true"
-	store.settings[SettingMaxAPIKeys] = "0"
+	addAccount(t, store, Account{ID: "u1", Username: "user1", PWHash: testHash("pass"), Role: RoleStandard, SessionID: &sid})
+	setSetting(t, store, SettingAllowAPIKeys, "true")
+	setSetting(t, store, SettingMaxAPIKeys, "0")
 
 	r := httptest.NewRequest(http.MethodGet, "/account", nil)
 	r.AddCookie(&http.Cookie{Name: "web_session", Value: sid})
@@ -1620,7 +1621,7 @@ func extractCSRF(body string) string {
 }
 
 func TestHandleHealthz(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
@@ -1637,15 +1638,15 @@ func TestHandleHealthz(t *testing.T) {
 }
 
 func TestSessionExpiry(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 
 	sid := "web-session"
 	expired := time.Now().Add(-200 * time.Hour)
-	store.accounts["u1"] = &Account{
+	addAccount(t, store, Account{
 		ID: "u1", Username: "user1", PWHash: testHash("pass"),
 		Role: RoleStandard, SessionID: &sid, SessionCreated: &expired,
-	}
+	})
 	handler := api.Handler()
 
 	t.Run("expired web session redirects to login", func(t *testing.T) {
@@ -1664,8 +1665,7 @@ func TestSessionExpiry(t *testing.T) {
 
 	t.Run("fresh session works", func(t *testing.T) {
 		fresh := time.Now()
-		store.accounts["u1"].SessionID = &sid
-		store.accounts["u1"].SessionCreated = &fresh
+		must(t, store.UpdateAccountSession(t.Context(), "u1", &sid, fresh))
 		r := httptest.NewRequest(http.MethodGet, "/users", nil)
 		r.AddCookie(&http.Cookie{Name: "web_session", Value: "web-session"})
 		w := httptest.NewRecorder()
@@ -1678,11 +1678,11 @@ func TestSessionExpiry(t *testing.T) {
 }
 
 func TestHandlePublicOPML(t *testing.T) {
-	store := newMockStore()
-	store.settings[SettingAllowSharing] = "true"
+	store := newFixtureStore(t)
+	setSetting(t, store, SettingAllowSharing, "true")
 	token := "test-share-token"
-	store.users["gpuser1"] = &User{Username: "gpuser1", PWHash: testHash("pass"), AccountID: "acct1", ShareToken: &token}
-	store.subscriptions["gpuser1"] = []string{"http://a.com/feed", "http://b.com/feed"}
+	addUser(t, store, User{Username: "gpuser1", PWHash: testHash("pass"), AccountID: "acct1", ShareToken: &token})
+	setSubscriptions(t, store, "gpuser1", []string{"http://a.com/feed", "http://b.com/feed"})
 	api := NewAPI(nil, store, noopMetrics{}, BuildInfo{}, "localhost:8080", "sqlite")
 	h := NewWebHandler(api)
 	mux := http.NewServeMux()
@@ -1737,11 +1737,11 @@ func TestHandlePublicOPML(t *testing.T) {
 }
 
 func TestHandlePublicRSS(t *testing.T) {
-	store := newMockStore()
-	store.settings[SettingAllowSharing] = "true"
+	store := newFixtureStore(t)
+	setSetting(t, store, SettingAllowSharing, "true")
 	token := "test-share-token"
-	store.users["gpuser1"] = &User{Username: "gpuser1", PWHash: testHash("pass"), AccountID: "acct1", ShareToken: &token}
-	store.subscriptions["gpuser1"] = []string{"http://a.com/feed", "http://b.com/feed"}
+	addUser(t, store, User{Username: "gpuser1", PWHash: testHash("pass"), AccountID: "acct1", ShareToken: &token})
+	setSubscriptions(t, store, "gpuser1", []string{"http://a.com/feed", "http://b.com/feed"})
 	api := NewAPI(nil, store, noopMetrics{}, BuildInfo{}, "localhost:8080", "sqlite")
 	h := NewWebHandler(api)
 	mux := http.NewServeMux()
@@ -1799,28 +1799,33 @@ func TestUserActions_SelfAndAdminRoutes(t *testing.T) {
 		{name: "delete user", suffix: "/delete", deletesUser: true},
 	}
 
-	newEnv := func() (*mockStore, http.Handler) {
-		adminSID, userSID, token := "admin-session", "user-session", "tok"
-		ms := newMockStore()
+	newEnv := func(t *testing.T) (*SQLStore, http.Handler) {
+		adminSID, userSID := "admin-session", "user-session"
+		ms := newFixtureStore(t)
 		h := newTestAPI(ms).Handler()
-		ms.accounts["admin-id"].SessionID = &adminSID
-		ms.accounts["u1"] = &Account{ID: "u1", Username: "user1", Role: RoleStandard, SessionID: &userSID}
+		must(t, ms.UpdateAccountSession(t.Context(), "admin-id", &adminSID, time.Now()))
+		addAccount(t, ms, Account{ID: "u1", Username: "user1", Role: RoleStandard, SessionID: &userSID})
 		for _, u := range []struct{ name, acct string }{{"mine", "u1"}, {"theirs", "other"}} {
-			ms.users[u.name] = &User{Username: u.name, PWHash: "orig", AccountID: u.acct, ShareToken: &token}
-			ms.subscriptions[u.name] = []string{"http://a.com/feed"}
-			ms.devices[u.name] = []Device{{ID: "dev1"}}
+			token := u.name + "-tok"
+			addUser(t, ms, User{Username: u.name, PWHash: "orig", AccountID: u.acct, ShareToken: &token})
+			setSubscriptions(t, ms, u.name, []string{"http://a.com/feed"})
+			setDevices(t, ms, u.name, []Device{{ID: "dev1"}})
 		}
-		ms.settings[SettingAllowSharing] = "true"
+		setSetting(t, ms, SettingAllowSharing, "true")
 		return ms, h
 	}
-	state := func(ms *mockStore, username string) string {
-		u, ok := ms.users[username]
-		if !ok {
+	state := func(t *testing.T, ms *SQLStore, username string) string {
+		u := userOf(t, ms, username)
+		if u == nil {
 			return "deleted"
 		}
-		return fmt.Sprintf("%s|%v|%v|%v", u.PWHash, ptrStringOr(u.ShareToken, "<nil>"), ms.subscriptions[username], ms.devices[username])
+		var devices []string
+		for _, d := range devicesOf(t, ms, username) {
+			devices = append(devices, d.ID)
+		}
+		return fmt.Sprintf("%s|%v|%v|%v", u.PWHash, ptrStringOr(u.ShareToken, "<nil>"), subscriptionsOf(t, ms, username), devices)
 	}
-	post := func(h http.Handler, sid, path string, a struct {
+	post := func(t *testing.T, h http.Handler, sid, path string, a struct {
 		name, suffix, body string
 		multipart          bool
 		deletesUser        bool
@@ -1842,47 +1847,47 @@ func TestUserActions_SelfAndAdminRoutes(t *testing.T) {
 
 	for _, a := range actions {
 		t.Run(a.name+"/self on other account's user is rejected", func(t *testing.T) {
-			ms, h := newEnv()
-			before := state(ms, "theirs")
-			if loc := post(h, "user-session", "/users/theirs"+a.suffix, a); loc != "/users" {
+			ms, h := newEnv(t)
+			before := state(t, ms, "theirs")
+			if loc := post(t, h, "user-session", "/users/theirs"+a.suffix, a); loc != "/users" {
 				t.Errorf("Location = %q, want /users", loc)
 			}
-			if after := state(ms, "theirs"); after != before {
+			if after := state(t, ms, "theirs"); after != before {
 				t.Errorf("other account's user changed: %s -> %s", before, after)
 			}
 		})
 		t.Run(a.name+"/self on own user", func(t *testing.T) {
-			ms, h := newEnv()
-			before := state(ms, "mine")
+			ms, h := newEnv(t)
+			before := state(t, ms, "mine")
 			want := "/users/mine"
 			if a.deletesUser {
 				want = "/users?"
 			}
-			if loc := post(h, "user-session", "/users/mine"+a.suffix, a); !strings.HasPrefix(loc, want) || strings.Contains(loc, "error=") {
+			if loc := post(t, h, "user-session", "/users/mine"+a.suffix, a); !strings.HasPrefix(loc, want) || strings.Contains(loc, "error=") {
 				t.Errorf("Location = %q, want prefix %q without error", loc, want)
 			}
-			if state(ms, "mine") == before {
+			if state(t, ms, "mine") == before {
 				t.Errorf("own user unchanged: %s", before)
 			}
 		})
 		t.Run(a.name+"/admin on any user", func(t *testing.T) {
-			ms, h := newEnv()
-			before := state(ms, "theirs")
+			ms, h := newEnv(t)
+			before := state(t, ms, "theirs")
 			want := "/admin/accounts/other/users/theirs"
 			if a.deletesUser {
 				want = "/admin/accounts/other"
 			}
-			if loc := post(h, "admin-session", "/admin/accounts/other/users/theirs"+a.suffix, a); !strings.HasPrefix(loc, want) || strings.Contains(loc, "error=") {
+			if loc := post(t, h, "admin-session", "/admin/accounts/other/users/theirs"+a.suffix, a); !strings.HasPrefix(loc, want) || strings.Contains(loc, "error=") {
 				t.Errorf("Location = %q, want prefix %q without error", loc, want)
 			}
-			if state(ms, "theirs") == before {
+			if state(t, ms, "theirs") == before {
 				t.Errorf("user unchanged: %s", before)
 			}
 		})
 	}
 
 	t.Run("detail page/self on other account's user is rejected", func(t *testing.T) {
-		_, h := newEnv()
+		_, h := newEnv(t)
 		r := httptest.NewRequest(http.MethodGet, "/users/theirs", nil)
 		r.AddCookie(&http.Cookie{Name: "web_session", Value: "user-session"})
 		w := httptest.NewRecorder()

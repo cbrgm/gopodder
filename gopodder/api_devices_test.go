@@ -8,11 +8,11 @@ import (
 )
 
 func TestHandleListDevices(t *testing.T) {
-	store := newMockStore()
-	store.users["testuser"] = &User{Username: "testuser", PWHash: testHash("testpass")}
-	store.devices["testuser"] = []Device{
+	store := newFixtureStore(t)
+	addUser(t, store, User{Username: "testuser", PWHash: testHash("testpass")})
+	setDevices(t, store, "testuser", []Device{
 		{ID: "phone1", Caption: "My Phone", Type: "mobile"},
-	}
+	})
 	api := newTestAPI(store)
 	handler := api.Handler()
 
@@ -40,8 +40,8 @@ func TestHandleListDevices(t *testing.T) {
 }
 
 func TestHandleListDevices_Empty(t *testing.T) {
-	store := newMockStore()
-	store.users["testuser"] = &User{Username: "testuser", PWHash: testHash("testpass")}
+	store := newFixtureStore(t)
+	addUser(t, store, User{Username: "testuser", PWHash: testHash("testpass")})
 	api := newTestAPI(store)
 	handler := api.Handler()
 
@@ -63,8 +63,8 @@ func TestHandleListDevices_Empty(t *testing.T) {
 }
 
 func TestHandleListDevices_Forbidden(t *testing.T) {
-	store := newMockStore()
-	store.users["testuser"] = &User{Username: "testuser", PWHash: testHash("testpass")}
+	store := newFixtureStore(t)
+	addUser(t, store, User{Username: "testuser", PWHash: testHash("testpass")})
 	api := newTestAPI(store)
 	handler := api.Handler()
 
@@ -78,8 +78,8 @@ func TestHandleListDevices_Forbidden(t *testing.T) {
 }
 
 func TestHandleUpdateDevice(t *testing.T) {
-	store := newMockStore()
-	store.users["testuser"] = &User{Username: "testuser", PWHash: testHash("testpass")}
+	store := newFixtureStore(t)
+	addUser(t, store, User{Username: "testuser", PWHash: testHash("testpass")})
 	api := newTestAPI(store)
 	handler := api.Handler()
 
@@ -141,8 +141,8 @@ func TestHandleUpdateDevice(t *testing.T) {
 }
 
 func TestHandleUpdateDevice_PersistsData(t *testing.T) {
-	store := newMockStore()
-	store.users["testuser"] = &User{Username: "testuser", PWHash: testHash("testpass")}
+	store := newFixtureStore(t)
+	addUser(t, store, User{Username: "testuser", PWHash: testHash("testpass")})
 	api := newTestAPI(store)
 	handler := api.Handler()
 
@@ -154,7 +154,7 @@ func TestHandleUpdateDevice_PersistsData(t *testing.T) {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
 	}
 
-	devices := store.devices["testuser"]
+	devices := devicesOf(t, store, "testuser")
 	if len(devices) != 1 {
 		t.Fatalf("expected 1 device stored, got %d", len(devices))
 	}

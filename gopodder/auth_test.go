@@ -158,11 +158,11 @@ func TestWithCORS(t *testing.T) {
 }
 
 func TestHandleLogin(t *testing.T) {
-	store := newMockStore()
-	store.users["testuser"] = &User{
+	store := newFixtureStore(t)
+	addUser(t, store, User{
 		Username: "testuser",
 		PWHash:   testHash("testpass"),
-	}
+	})
 	api := newTestAPI(store)
 	handler := api.Handler()
 
@@ -203,7 +203,7 @@ func TestHandleLogin(t *testing.T) {
 }
 
 func TestHandleLogin_NoAuth(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	api := newTestAPI(store)
 	handler := api.Handler()
 
@@ -220,13 +220,13 @@ func TestHandleLogin_NoAuth(t *testing.T) {
 }
 
 func TestHandleLogin_RotatesSession(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	sid := "old-session-123"
-	store.users["testuser"] = &User{
+	addUser(t, store, User{
 		Username:  "testuser",
 		PWHash:    testHash("testpass"),
 		SessionID: &sid,
-	}
+	})
 	api := newTestAPI(store)
 	handler := api.Handler()
 
@@ -262,15 +262,15 @@ func TestHandleLogin_RotatesSession(t *testing.T) {
 }
 
 func TestHandleLogout(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	sid := "session-abc"
 	now := time.Now()
-	store.users["testuser"] = &User{
+	addUser(t, store, User{
 		Username:       "testuser",
 		PWHash:         testHash("testpass"),
 		SessionID:      &sid,
 		SessionCreated: &now,
-	}
+	})
 	api := newTestAPI(store)
 	handler := api.Handler()
 
@@ -288,7 +288,7 @@ func TestHandleLogout(t *testing.T) {
 		}) {
 			t.Error("expected sessionid cookie to be cleared")
 		}
-		if store.users["testuser"].SessionID != nil {
+		if userOf(t, store, "testuser").SessionID != nil {
 			t.Error("session should be invalidated in DB after logout")
 		}
 	})
@@ -305,15 +305,15 @@ func TestHandleLogout(t *testing.T) {
 }
 
 func TestSessionBasedAuth(t *testing.T) {
-	store := newMockStore()
+	store := newFixtureStore(t)
 	sid := "valid-session"
 	now := time.Now()
-	store.users["testuser"] = &User{
+	addUser(t, store, User{
 		Username:       "testuser",
 		PWHash:         testHash("testpass"),
 		SessionID:      &sid,
 		SessionCreated: &now,
-	}
+	})
 	api := newTestAPI(store)
 	handler := api.Handler()
 
@@ -355,8 +355,8 @@ func TestSessionBasedAuth(t *testing.T) {
 }
 
 func TestRouteAuth_InvalidPaths(t *testing.T) {
-	store := newMockStore()
-	store.users["testuser"] = &User{Username: "testuser", PWHash: testHash("testpass")}
+	store := newFixtureStore(t)
+	addUser(t, store, User{Username: "testuser", PWHash: testHash("testpass")})
 	api := newTestAPI(store)
 	handler := api.Handler()
 
@@ -390,7 +390,7 @@ func TestWithRequestLogging(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	api := newTestAPI(newMockStore())
+	api := newTestAPI(newFixtureStore(t))
 	handler := api.withRequestLogging(inner)
 
 	r := httptest.NewRequest(http.MethodGet, "/test", nil)

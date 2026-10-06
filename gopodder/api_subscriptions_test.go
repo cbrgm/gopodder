@@ -35,9 +35,9 @@ func TestHasOverlap(t *testing.T) {
 }
 
 func TestHandleGetSubscriptions(t *testing.T) {
-	store := newMockStore()
-	store.users["testuser"] = &User{Username: "testuser", PWHash: testHash("testpass")}
-	store.subscriptions["testuser"] = []string{"http://a.com/feed", "http://b.com/feed"}
+	store := newFixtureStore(t)
+	addUser(t, store, User{Username: "testuser", PWHash: testHash("testpass")})
+	setSubscriptions(t, store, "testuser", []string{"http://a.com/feed", "http://b.com/feed"})
 	api := newTestAPI(store)
 	handler := api.Handler()
 
@@ -60,8 +60,8 @@ func TestHandleGetSubscriptions(t *testing.T) {
 	})
 
 	t.Run("empty user returns empty array not null", func(t *testing.T) {
-		store2 := newMockStore()
-		store2.users["testuser"] = &User{Username: "testuser", PWHash: testHash("testpass")}
+		store2 := newFixtureStore(t)
+		addUser(t, store2, User{Username: "testuser", PWHash: testHash("testpass")})
 		api2 := newTestAPI(store2)
 		handler2 := api2.Handler()
 
@@ -90,9 +90,9 @@ func TestHandleGetSubscriptions(t *testing.T) {
 }
 
 func TestHandleGetAllSubscriptions(t *testing.T) {
-	store := newMockStore()
-	store.users["testuser"] = &User{Username: "testuser", PWHash: testHash("testpass")}
-	store.subscriptions["testuser"] = []string{"http://a.com/feed", "http://b.com/feed", "http://c.com/feed"}
+	store := newFixtureStore(t)
+	addUser(t, store, User{Username: "testuser", PWHash: testHash("testpass")})
+	setSubscriptions(t, store, "testuser", []string{"http://a.com/feed", "http://b.com/feed", "http://c.com/feed"})
 	api := newTestAPI(store)
 	handler := api.Handler()
 
@@ -115,8 +115,8 @@ func TestHandleGetAllSubscriptions(t *testing.T) {
 	})
 
 	t.Run("empty returns empty array", func(t *testing.T) {
-		store2 := newMockStore()
-		store2.users["testuser"] = &User{Username: "testuser", PWHash: testHash("testpass")}
+		store2 := newFixtureStore(t)
+		addUser(t, store2, User{Username: "testuser", PWHash: testHash("testpass")})
 		api2 := newTestAPI(store2)
 		handler2 := api2.Handler()
 
@@ -145,9 +145,9 @@ func TestHandleGetAllSubscriptions(t *testing.T) {
 }
 
 func TestHandleUploadSubscriptions(t *testing.T) {
-	store := newMockStore()
-	store.users["testuser"] = &User{Username: "testuser", PWHash: testHash("testpass")}
-	store.subscriptions["testuser"] = []string{"http://old.com/feed"}
+	store := newFixtureStore(t)
+	addUser(t, store, User{Username: "testuser", PWHash: testHash("testpass")})
+	setSubscriptions(t, store, "testuser", []string{"http://old.com/feed"})
 	api := newTestAPI(store)
 	handler := api.Handler()
 
@@ -172,7 +172,7 @@ func TestHandleUploadSubscriptions(t *testing.T) {
 			t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
 		}
 
-		if !slices.ContainsFunc(store.devices["testuser"], func(d Device) bool {
+		if !slices.ContainsFunc(devicesOf(t, store, "testuser"), func(d Device) bool {
 			return d.ID == "newdevice"
 		}) {
 			t.Error("expected device to be auto-created on subscription upload")
@@ -201,8 +201,8 @@ func TestHandleUploadSubscriptions(t *testing.T) {
 }
 
 func TestHandleUploadSubscriptionChanges(t *testing.T) {
-	store := newMockStore()
-	store.users["testuser"] = &User{Username: "testuser", PWHash: testHash("testpass")}
+	store := newFixtureStore(t)
+	addUser(t, store, User{Username: "testuser", PWHash: testHash("testpass")})
 	api := newTestAPI(store)
 	handler := api.Handler()
 
@@ -262,9 +262,9 @@ func TestHandleUploadSubscriptionChanges(t *testing.T) {
 }
 
 func TestHandleUploadSubscriptionChanges_UnmatchedRemoval(t *testing.T) {
-	store := newMockStore()
-	store.users["testuser"] = &User{Username: "testuser", PWHash: testHash("testpass")}
-	store.subscriptions["testuser"] = []string{"http://a.com", "http://b.com"}
+	store := newFixtureStore(t)
+	addUser(t, store, User{Username: "testuser", PWHash: testHash("testpass")})
+	setSubscriptions(t, store, "testuser", []string{"http://a.com", "http://b.com"})
 	api := newTestAPI(store)
 	handler := api.Handler()
 
@@ -278,8 +278,8 @@ func TestHandleUploadSubscriptionChanges_UnmatchedRemoval(t *testing.T) {
 			t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
 		}
 
-		if len(store.subscriptions["testuser"]) != 2 {
-			t.Errorf("subscriptions should be unchanged, got %v", store.subscriptions["testuser"])
+		if len(subscriptionsOf(t, store, "testuser")) != 2 {
+			t.Errorf("subscriptions should be unchanged, got %v", subscriptionsOf(t, store, "testuser"))
 		}
 	})
 
@@ -293,13 +293,13 @@ func TestHandleUploadSubscriptionChanges_UnmatchedRemoval(t *testing.T) {
 			t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
 		}
 
-		if len(store.subscriptions["testuser"]) != 1 {
-			t.Errorf("expected 1 sub remaining, got %v", store.subscriptions["testuser"])
+		if len(subscriptionsOf(t, store, "testuser")) != 1 {
+			t.Errorf("expected 1 sub remaining, got %v", subscriptionsOf(t, store, "testuser"))
 		}
 	})
 
 	t.Run("mixed valid and invalid removals processes valid ones", func(t *testing.T) {
-		store.subscriptions["testuser"] = []string{"http://x.com", "http://y.com"}
+		setSubscriptions(t, store, "testuser", []string{"http://x.com", "http://y.com"})
 		body := `{"add":[],"remove":["http://x.com","http://doesnotexist.com"]}`
 		r := authedRequest(http.MethodPost, "/api/2/subscriptions/testuser/phone.json", body)
 		w := httptest.NewRecorder()
@@ -309,15 +309,15 @@ func TestHandleUploadSubscriptionChanges_UnmatchedRemoval(t *testing.T) {
 			t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
 		}
 
-		if len(store.subscriptions["testuser"]) != 1 || store.subscriptions["testuser"][0] != "http://y.com" {
-			t.Errorf("expected [http://y.com], got %v", store.subscriptions["testuser"])
+		if len(subscriptionsOf(t, store, "testuser")) != 1 || subscriptionsOf(t, store, "testuser")[0] != "http://y.com" {
+			t.Errorf("expected [http://y.com], got %v", subscriptionsOf(t, store, "testuser"))
 		}
 	})
 }
 
 func TestHandleUploadSubscriptionChanges_TimestampAdvances(t *testing.T) {
-	store := newMockStore()
-	store.users["testuser"] = &User{Username: "testuser", PWHash: testHash("testpass")}
+	store := newFixtureStore(t)
+	addUser(t, store, User{Username: "testuser", PWHash: testHash("testpass")})
 	api := newTestAPI(store)
 	handler := api.Handler()
 
@@ -342,8 +342,8 @@ func TestHandleUploadSubscriptionChanges_TimestampAdvances(t *testing.T) {
 }
 
 func TestHandleGetSubscriptionChanges_TimestampAdvances(t *testing.T) {
-	store := newMockStore()
-	store.users["testuser"] = &User{Username: "testuser", PWHash: testHash("testpass")}
+	store := newFixtureStore(t)
+	addUser(t, store, User{Username: "testuser", PWHash: testHash("testpass")})
 	api := newTestAPI(store)
 	handler := api.Handler()
 
@@ -367,8 +367,8 @@ func TestHandleGetSubscriptionChanges_TimestampAdvances(t *testing.T) {
 }
 
 func TestHandleGetSubscriptionChanges(t *testing.T) {
-	store := newMockStore()
-	store.users["testuser"] = &User{Username: "testuser", PWHash: testHash("testpass")}
+	store := newFixtureStore(t)
+	addUser(t, store, User{Username: "testuser", PWHash: testHash("testpass")})
 	api := newTestAPI(store)
 	handler := api.Handler()
 
