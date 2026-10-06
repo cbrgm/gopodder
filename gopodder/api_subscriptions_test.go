@@ -416,3 +416,36 @@ func TestHandleGetSubscriptionChanges(t *testing.T) {
 		}
 	})
 }
+
+func TestHandleGetSubscriptionChanges_Since(t *testing.T) {
+	store := newFixtureStore(t)
+	addUser(t, store, User{Username: "testuser", PWHash: testHash("testpass")})
+	must(t, store.UpdateSubscriptions(t.Context(), "testuser", []string{"http://a.com"}, nil, 100))
+	must(t, store.UpdateSubscriptions(t.Context(), "testuser", []string{"http://b.com"}, nil, 200))
+	must(t, store.UpdateSubscriptions(t.Context(), "testuser", nil, []string{"http://a.com"}, 300))
+	handler := newTestAPI(store).Handler()
+
+	cases := []struct {
+		since       string
+		add, remove []string
+	}{
+		{since: "0", add: []string{"http://b.com"}, remove: []string{"http://a.com"}},
+		{since: "150", add: []string{"http://b.com"}, remove: []string{"http://a.com"}},
+		{since: "250", add: []string{}, remove: []string{"http://a.com"}},
+		{since: "350", add: []string{}, remove: []string{}},
+	}
+	for _, tc := range cases {
+		t.Run("since="+tc.since, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, authedRequest(http.MethodGet, "/api/2/subscriptions/testuser/phone1.json?since="+tc.since, ""))
+			if w.Code != http.StatusOK {
+				t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+			}
+			var resp subscriptionChangesResponse
+			must(t, json.Unmarshal(w.Body.Bytes(), &resp))
+			if !slices.Equal(resp.Add, tc.add) || !slices.Equal(resp.Remove, tc.remove) {
+				t.Errorf("add = %v, remove = %v, want add = %v, remove = %v", resp.Add, resp.Remove, tc.add, tc.remove)
+			}
+		})
+	}
+}

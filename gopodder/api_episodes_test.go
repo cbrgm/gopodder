@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 )
 
@@ -137,6 +138,14 @@ func TestHandleUploadEpisodes(t *testing.T) {
 		if resp.UpdateURLs == nil {
 			t.Error("update_urls should not be nil")
 		}
+
+		stored, err := store.GetEpisodes(t.Context(), EpisodeQuery{Username: "testuser"})
+		must(t, err)
+		if !slices.ContainsFunc(stored, func(ep Episode) bool {
+			return ep.Episode == "http://pod.com/ep1.mp3" && ep.Position != nil && *ep.Position == 60
+		}) {
+			t.Errorf("uploaded action not stored, got %+v", stored)
+		}
 	})
 
 	t.Run("upload with all episode action types", func(t *testing.T) {
@@ -209,4 +218,36 @@ func TestHandleUploadEpisodes(t *testing.T) {
 			t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
 		}
 	})
+}
+
+func TestHandleGetEpisodes_Since(t *testing.T) {
+	store := newFixtureStore(t)
+	addUser(t, store, User{Username: "testuser", PWHash: testHash("testpass")})
+	must(t, store.UpdateEpisodes(t.Context(), "testuser", []Episode{{Podcast: "http://p/feed", Episode: "http://p/old.mp3", Action: "play"}}, 100))
+	must(t, store.UpdateEpisodes(t.Context(), "testuser", []Episode{{Podcast: "http://p/feed", Episode: "http://p/new.mp3", Action: "play"}}, 200))
+	handler := newTestAPI(store).Handler()
+
+	for since, want := range map[string][]string{
+		"0":   {"http://p/new.mp3", "http://p/old.mp3"},
+		"150": {"http://p/new.mp3"},
+		"250": {},
+	} {
+		t.Run("since="+since, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, authedRequest(http.MethodGet, "/api/2/episodes/testuser.json?since="+since, ""))
+			if w.Code != http.StatusOK {
+				t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+			}
+			var resp episodeResponse
+			must(t, json.Unmarshal(w.Body.Bytes(), &resp))
+			got := []string{}
+			for _, a := range resp.Actions {
+				got = append(got, a.Episode)
+			}
+			slices.Sort(got)
+			if !slices.Equal(got, want) {
+				t.Errorf("episodes = %v, want %v", got, want)
+			}
+		})
+	}
 }
