@@ -548,8 +548,8 @@ func (h *WebHandler) changeUserPassword(w http.ResponseWriter, r *http.Request, 
 		http.Redirect(w, r, page+"?error="+msg, http.StatusSeeOther)
 		return
 	}
-	if err := h.store.UpdateUserPassword(r.Context(), username, pwhash); err != nil {
-		h.logger.Error("failed to update gpodder user password", "err", err, "username", username)
+	if h.writeFailed(w, r, h.store.UpdateUserPassword(r.Context(), username, pwhash), "UpdateUserPassword", page) {
+		return
 	}
 	http.Redirect(w, r, page+"?flash=Password+updated.", http.StatusSeeOther)
 }
