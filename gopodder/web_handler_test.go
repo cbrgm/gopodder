@@ -404,21 +404,21 @@ func TestIsSettingEnabled(t *testing.T) {
 	h := NewWebHandler(api)
 
 	t.Run("returns false when setting does not exist", func(t *testing.T) {
-		if h.isSettingEnabled(t.Context(), SettingSelfRegistration) {
+		if settingEnabled(t.Context(), h.store, SettingSelfRegistration) {
 			t.Error("expected false for nonexistent setting")
 		}
 	})
 
 	t.Run("returns false when setting is false", func(t *testing.T) {
 		store.settings[SettingSelfRegistration] = "false"
-		if h.isSettingEnabled(t.Context(), SettingSelfRegistration) {
+		if settingEnabled(t.Context(), h.store, SettingSelfRegistration) {
 			t.Error("expected false for disabled setting")
 		}
 	})
 
 	t.Run("returns true when setting is true", func(t *testing.T) {
 		store.settings[SettingSelfRegistration] = "true"
-		if !h.isSettingEnabled(t.Context(), SettingSelfRegistration) {
+		if !settingEnabled(t.Context(), h.store, SettingSelfRegistration) {
 			t.Error("expected true for enabled setting")
 		}
 	})

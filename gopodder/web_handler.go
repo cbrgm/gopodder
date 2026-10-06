@@ -197,13 +197,13 @@ func (h *WebHandler) handleSetupSubmit(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *WebHandler) handleLoginPage(w http.ResponseWriter, r *http.Request) {
-	_ = web.LoginPage("", h.isSettingEnabled(r.Context(), SettingSelfRegistration), h.build.Version).Render(r.Context(), w)
+	_ = web.LoginPage("", settingEnabled(r.Context(), h.store, SettingSelfRegistration), h.build.Version).Render(r.Context(), w)
 }
 
 func (h *WebHandler) handleLoginSubmit(w http.ResponseWriter, r *http.Request) {
 	username := r.FormValue("username")
 	password := r.FormValue("password")
-	showRegister := h.isSettingEnabled(r.Context(), SettingSelfRegistration)
+	showRegister := settingEnabled(r.Context(), h.store, SettingSelfRegistration)
 
 	acct, err := h.store.GetAccount(r.Context(), username)
 	if err != nil || !checkPassword(acct.PWHash, password) {
@@ -415,7 +415,7 @@ func (h *WebHandler) apiKeysAllowed(ctx context.Context, acct *Account) bool {
 	if acct.Role == RoleAdmin {
 		return true
 	}
-	return h.isSettingEnabled(ctx, SettingAllowAPIKeys)
+	return settingEnabled(ctx, h.store, SettingAllowAPIKeys)
 }
 
 // Self-service: gPodder Users
@@ -423,7 +423,7 @@ func (h *WebHandler) apiKeysAllowed(ctx context.Context, acct *Account) bool {
 func (h *WebHandler) handleSelfUsersPage(w http.ResponseWriter, r *http.Request) {
 	acct := webAccountFromContext(r.Context())
 	usersData := h.buildUsersData(r.Context(), acct.ID)
-	canCreate := acct.Role == RoleAdmin || h.isSettingEnabled(r.Context(), SettingAllowUserCreation)
+	canCreate := acct.Role == RoleAdmin || settingEnabled(r.Context(), h.store, SettingAllowUserCreation)
 
 	data := web.UserManagementData{
 		Account:        acct.Username,
@@ -450,7 +450,7 @@ func (h *WebHandler) handleSelfUserDetail(w http.ResponseWriter, r *http.Request
 
 func (h *WebHandler) handleSelfCreateUser(w http.ResponseWriter, r *http.Request) {
 	acct := webAccountFromContext(r.Context())
-	if acct.Role != RoleAdmin && !h.isSettingEnabled(r.Context(), SettingAllowUserCreation) {
+	if acct.Role != RoleAdmin && !settingEnabled(r.Context(), h.store, SettingAllowUserCreation) {
 		http.Redirect(w, r, "/users?error=User+creation+is+disabled.", http.StatusSeeOther)
 		return
 	}
@@ -616,7 +616,7 @@ func (h *WebHandler) importSubscriptions(w http.ResponseWriter, r *http.Request,
 }
 
 func (h *WebHandler) enableSharing(w http.ResponseWriter, r *http.Request, username, page string) {
-	if !h.isSettingEnabled(r.Context(), SettingAllowSharing) {
+	if !settingEnabled(r.Context(), h.store, SettingAllowSharing) {
 		http.Redirect(w, r, page, http.StatusSeeOther)
 		return
 	}
@@ -716,7 +716,7 @@ func (h *WebHandler) buildUserDetailData(ctx context.Context, r *http.Request, a
 		ShareToken:     shareToken,
 		ShareOPMLURL:   shareOPMLURL,
 		ShareRSSURL:    shareRSSURL,
-		SharingAllowed: h.isSettingEnabled(ctx, SettingAllowSharing),
+		SharingAllowed: settingEnabled(ctx, h.store, SettingAllowSharing),
 	}
 }
 
@@ -977,7 +977,7 @@ func (h *WebHandler) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 // Registration
 
 func (h *WebHandler) handleRegisterPage(w http.ResponseWriter, r *http.Request) {
-	if !h.isSettingEnabled(r.Context(), SettingSelfRegistration) {
+	if !settingEnabled(r.Context(), h.store, SettingSelfRegistration) {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
@@ -985,7 +985,7 @@ func (h *WebHandler) handleRegisterPage(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *WebHandler) handleRegisterSubmit(w http.ResponseWriter, r *http.Request) {
-	if !h.isSettingEnabled(r.Context(), SettingSelfRegistration) {
+	if !settingEnabled(r.Context(), h.store, SettingSelfRegistration) {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
@@ -1038,10 +1038,10 @@ func (h *WebHandler) handleSettingsPage(w http.ResponseWriter, r *http.Request) 
 		Account:             acct.Username,
 		Flash:               r.URL.Query().Get("flash"),
 		Error:               r.URL.Query().Get("error"),
-		SelfRegistration:    h.isSettingEnabled(r.Context(), SettingSelfRegistration),
-		AllowUserCreation:   h.isSettingEnabled(r.Context(), SettingAllowUserCreation),
-		AllowSharing:        h.isSettingEnabled(r.Context(), SettingAllowSharing),
-		AllowAPIKeys:        h.isSettingEnabled(r.Context(), SettingAllowAPIKeys),
+		SelfRegistration:    settingEnabled(r.Context(), h.store, SettingSelfRegistration),
+		AllowUserCreation:   settingEnabled(r.Context(), h.store, SettingAllowUserCreation),
+		AllowSharing:        settingEnabled(r.Context(), h.store, SettingAllowSharing),
+		AllowAPIKeys:        settingEnabled(r.Context(), h.store, SettingAllowAPIKeys),
 		MaxUsersPerAccount:  settingInt(r.Context(), h.store, SettingMaxUsersPerAccount),
 		MaxAPIKeys:          cmp.Or(settingInt(r.Context(), h.store, SettingMaxAPIKeys), defaultMaxAPIKeys),
 		MinPasswordLength:   settingInt(r.Context(), h.store, SettingMinPasswordLength),
@@ -1131,14 +1131,6 @@ func parseSettingInt(s string) (int, bool) {
 		return 0, false
 	}
 	return n, true
-}
-
-func (h *WebHandler) isSettingEnabled(ctx context.Context, key string) bool {
-	val, err := h.store.GetSetting(ctx, key)
-	if err != nil {
-		return key == SettingAllowUserCreation
-	}
-	return val == "true"
 }
 
 func (h *WebHandler) checkPasswordLength(ctx context.Context, password string) string {
@@ -1274,7 +1266,7 @@ func (h *WebHandler) handlePublicOPML(w http.ResponseWriter, r *http.Request) {
 	username := r.PathValue("username")
 	token := r.URL.Query().Get("token")
 
-	if token == "" || !h.isSettingEnabled(r.Context(), SettingAllowSharing) {
+	if token == "" || !settingEnabled(r.Context(), h.store, SettingAllowSharing) {
 		http.NotFound(w, r)
 		return
 	}
@@ -1298,7 +1290,7 @@ func (h *WebHandler) handlePublicRSS(w http.ResponseWriter, r *http.Request) {
 	username := r.PathValue("username")
 	token := r.URL.Query().Get("token")
 
-	if token == "" || !h.isSettingEnabled(r.Context(), SettingAllowSharing) {
+	if token == "" || !settingEnabled(r.Context(), h.store, SettingAllowSharing) {
 		http.NotFound(w, r)
 		return
 	}

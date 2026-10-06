@@ -157,6 +157,16 @@ func settingInt(ctx context.Context, store Store, key string) int64 {
 	return n
 }
 
+// settingEnabled reports whether a boolean setting is "true". An unset
+// SettingAllowUserCreation counts as enabled, any other unset setting as off.
+func settingEnabled(ctx context.Context, store Store, key string) bool {
+	val, err := store.GetSetting(ctx, key)
+	if err != nil {
+		return key == SettingAllowUserCreation
+	}
+	return val == "true"
+}
+
 func minPasswordLength(ctx context.Context, store Store) int64 {
 	return cmp.Or(settingInt(ctx, store, SettingMinPasswordLength), 8)
 }
