@@ -2279,3 +2279,36 @@ func TestSQLiteStore_GetStats(t *testing.T) {
 	}
 }
 
+func TestISOTimestampToNullInt64(t *testing.T) {
+	wantUnix := time.Date(2024, 6, 1, 14, 30, 0, 0, time.UTC).Unix()
+
+	tests := []struct {
+		name      string
+		input     *string
+		wantValid bool
+		wantUnix  int64
+	}{
+		{"nil", nil, false, 0},
+		{"empty", new(""), false, 0},
+		{"invalid format", new("not-a-timestamp"), false, 0},
+		{"iso without timezone", new("2024-06-01T14:30:00"), true, wantUnix},
+		{"rfc3339 utc z", new("2024-06-01T14:30:00Z"), true, wantUnix},
+		{"rfc3339 positive offset", new("2024-06-01T16:30:00+02:00"), true, wantUnix},
+		{"rfc3339 negative offset", new("2024-06-01T09:30:00-05:00"), true, wantUnix},
+		{"rfc3339 with subseconds", new("2024-06-01T14:30:00.123456Z"), true, wantUnix},
+		{"iso with subseconds no tz", new("2024-06-01T14:30:00.500"), true, wantUnix},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isoTimestampToNullInt64(tt.input)
+			if got.Valid != tt.wantValid {
+				t.Fatalf("Valid = %v, want %v", got.Valid, tt.wantValid)
+			}
+			if tt.wantValid && got.Int64 != tt.wantUnix {
+				t.Errorf("Int64 = %d, want %d", got.Int64, tt.wantUnix)
+			}
+		})
+	}
+}
+

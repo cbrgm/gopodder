@@ -163,13 +163,28 @@ func TestHandleUploadEpisodes(t *testing.T) {
 	})
 
 	t.Run("upload with timestamp", func(t *testing.T) {
-		body := `[{"podcast":"http://pod.com/feed","episode":"http://pod.com/ts.mp3","action":"play","timestamp":"2024-06-01T14:30:00","position":120,"total":600,"started":0}]`
-		r := authedRequest(http.MethodPost, "/api/2/episodes/testuser.json", body)
-		w := httptest.NewRecorder()
-		handler.ServeHTTP(w, r)
+		for _, ts := range []string{"2024-06-01T14:30:00", "2024-06-01T14:30:00Z", "2024-06-01T16:30:00+02:00"} {
+			body := `[{"podcast":"http://pod.com/feed","episode":"http://pod.com/ts.mp3","action":"play","timestamp":"` + ts + `","position":120,"total":600,"started":0}]`
+			r := authedRequest(http.MethodPost, "/api/2/episodes/testuser.json", body)
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, r)
 
-		if w.Code != http.StatusOK {
-			t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+			if w.Code != http.StatusOK {
+				t.Fatalf("ts %q: status = %d, want %d", ts, w.Code, http.StatusOK)
+			}
+
+			stored, err := store.GetEpisodes(t.Context(), EpisodeQuery{Username: "testuser"})
+			must(t, err)
+			var found *Episode
+			for i := range stored {
+				if stored[i].Episode == "http://pod.com/ts.mp3" {
+					found = &stored[i]
+					break
+				}
+			}
+			if found == nil || found.Timestamp == nil || *found.Timestamp != "2024-06-01T14:30:00" {
+				t.Fatalf("ts %q: expected stored timestamp 2024-06-01T14:30:00, got %+v", ts, found)
+			}
 		}
 	})
 

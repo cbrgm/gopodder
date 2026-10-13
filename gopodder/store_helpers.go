@@ -100,15 +100,23 @@ func ptrStringOr(s *string, def string) string {
 	return def
 }
 
+var isoTimestampLayouts = []string{
+	isoFormat,
+	time.RFC3339Nano,
+	time.RFC3339,
+	"2006-01-02T15:04:05.999999999",
+}
+
 func isoTimestampToNullInt64(s *string) sql.NullInt64 {
 	if s == nil || *s == "" {
 		return sql.NullInt64{}
 	}
-	t, err := time.Parse(isoFormat, *s)
-	if err != nil {
-		return sql.NullInt64{}
+	for _, layout := range isoTimestampLayouts {
+		if t, err := time.Parse(layout, *s); err == nil {
+			return sql.NullInt64{Int64: t.Unix(), Valid: true}
+		}
 	}
-	return sql.NullInt64{Int64: t.Unix(), Valid: true}
+	return sql.NullInt64{}
 }
 
 func toInt64(v any) int64 {
