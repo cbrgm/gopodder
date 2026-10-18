@@ -2278,4 +2278,3 @@ func TestSQLiteStore_GetStats(t *testing.T) {
 		t.Errorf("Subscriptions = %d, want 1", stats.Subscriptions)
 	}
 }
-
