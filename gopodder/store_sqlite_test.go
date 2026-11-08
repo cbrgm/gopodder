@@ -967,6 +967,107 @@ func TestSQLiteStore_Episodes(t *testing.T) {
 			}
 		})
 	})
+
+	t.Run("download/delete do not overwrite listening state", func(t *testing.T) {
+		const feed = "http://podcast1.com/feed"
+
+		get := func(t *testing.T, episodeURL string) Episode {
+			t.Helper()
+			eps, err := store.GetEpisodes(ctx, EpisodeQuery{Username: "alice", Since: 0})
+			if err != nil {
+				t.Fatalf("GetEpisodes: %v", err)
+			}
+			for _, ep := range eps {
+				if ep.Episode == episodeURL {
+					return ep
+				}
+			}
+			t.Fatalf("episode %q not found", episodeURL)
+			return Episode{}
+		}
+
+		upload := func(t *testing.T, ep Episode, modified int64) {
+			t.Helper()
+			if err := store.UpdateEpisodes(ctx, "alice", []Episode{ep}, modified); err != nil {
+				t.Fatalf("UpdateEpisodes (%s): %v", ep.Action, err)
+			}
+		}
+
+		play := func(episodeURL string, pos int64) Episode {
+			dev, ts, st, tot := "antennapod", "2024-07-01T10:00:00", int64(0), int64(3600)
+			return Episode{
+				Podcast: feed, Episode: episodeURL, Device: &dev, Timestamp: &ts,
+				Action: "play", Started: &st, Position: &pos, Total: &tot,
+			}
+		}
+
+		t.Run("play then delete keeps the play", func(t *testing.T) {
+			const url = "http://podcast1.com/ep-play-delete.mp3"
+			upload(t, play(url, 1200), 500)
+			upload(t, Episode{Podcast: feed, Episode: url, Action: "delete"}, 510)
+
+			ep := get(t, url)
+			if ep.Action != "play" {
+				t.Errorf("action = %q, want play to survive the delete", ep.Action)
+			}
+			if ep.Position == nil || *ep.Position != 1200 {
+				t.Errorf("position = %v, want 1200", ep.Position)
+			}
+			if ep.Device == nil || *ep.Device != "antennapod" {
+				t.Errorf("device = %v, want antennapod", ep.Device)
+			}
+		})
+
+		t.Run("play then delete then new resets the state", func(t *testing.T) {
+			const url = "http://podcast1.com/ep-play-delete-new.mp3"
+			upload(t, play(url, 1200), 600)
+			upload(t, Episode{Podcast: feed, Episode: url, Action: "delete"}, 610)
+			upload(t, Episode{Podcast: feed, Episode: url, Action: "new"}, 620)
+
+			ep := get(t, url)
+			if ep.Action != "new" {
+				t.Errorf("action = %q, want new to replace the play", ep.Action)
+			}
+			if ep.Position != nil {
+				t.Errorf("position = %v, want nil after new", ep.Position)
+			}
+		})
+
+		t.Run("play then download keeps the play", func(t *testing.T) {
+			const url = "http://podcast1.com/ep-play-download.mp3"
+			upload(t, play(url, 800), 700)
+			upload(t, Episode{Podcast: feed, Episode: url, Action: "download"}, 710)
+
+			ep := get(t, url)
+			if ep.Action != "play" {
+				t.Errorf("action = %q, want play to survive the download", ep.Action)
+			}
+			if ep.Position == nil || *ep.Position != 800 {
+				t.Errorf("position = %v, want 800", ep.Position)
+			}
+		})
+
+		t.Run("delete without prior listening state is still stored", func(t *testing.T) {
+			const url = "http://podcast1.com/ep-delete-only.mp3"
+			upload(t, Episode{Podcast: feed, Episode: url, Action: "download"}, 800)
+			upload(t, Episode{Podcast: feed, Episode: url, Action: "delete"}, 810)
+
+			if ep := get(t, url); ep.Action != "delete" {
+				t.Errorf("action = %q, want delete", ep.Action)
+			}
+		})
+
+		t.Run("play after delete still replaces it", func(t *testing.T) {
+			const url = "http://podcast1.com/ep-delete-then-play.mp3"
+			upload(t, Episode{Podcast: feed, Episode: url, Action: "delete"}, 900)
+			upload(t, play(url, 300), 910)
+
+			ep := get(t, url)
+			if ep.Action != "play" || ep.Position == nil || *ep.Position != 300 {
+				t.Errorf("got action=%q position=%v, want play/300", ep.Action, ep.Position)
+			}
+		})
+	})
 }
 
 func TestSQLiteStore_CrossDeviceSubscriptionSync(t *testing.T) {
