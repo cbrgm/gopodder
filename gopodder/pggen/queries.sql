@@ -190,7 +190,8 @@ ON CONFLICT(username, podcast, episode) DO UPDATE SET
     total = EXCLUDED.total,
     modified = EXCLUDED.modified,
     content_hash = EXCLUDED.content_hash
-WHERE EXCLUDED.content_hash != episodes.content_hash;
+WHERE EXCLUDED.content_hash != episodes.content_hash
+  AND NOT (EXCLUDED.action IN ('download', 'delete') AND episodes.action IN ('play', 'new'));
 
 -- Stats
 -- name: CountUsers :one

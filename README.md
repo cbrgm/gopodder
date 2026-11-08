@@ -218,7 +218,7 @@ Some apps have a "force upload" option that replaces the server's subscription l
 
 **What decides what happens during sync, the server or the app?**
 
-The app. goPodder just stores what gets sent and serves it back. It doesn't pick a merge strategy, doesn't resolve conflicts, doesn't reorder anything. Subscription adds are added, removes are removed. Episode actions are stored as the latest state per episode: a new playback state replaces the old one, re-sending an unchanged state is ignored.
+The app. goPodder just stores what gets sent and serves it back. It doesn't pick a merge strategy, doesn't resolve conflicts, doesn't reorder anything. Subscription adds are added, removes are removed. Episode actions are stored as the latest state per episode: a new playback state replaces the old one, re-sending an unchanged state is ignored. `download` and `delete` are device-local file actions, so they never replace an existing `play` or `new` state (a later `new` still does).
 
 **Does goPodder fetch my feeds or phone home?**
 
