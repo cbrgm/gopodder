@@ -1,7 +1,7 @@
 package gopodder
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -174,6 +174,31 @@ func TestWriteJSON(t *testing.T) {
 	want := `{"hello":"world"}` + "\n"
 	if w.Body.String() != want {
 		t.Errorf("body = %q, want %q", w.Body.String(), want)
+	}
+}
+
+// Wire output must stay byte-identical to what v1 encoding/json produced.
+func TestWriteJSON_V1Compatible(t *testing.T) {
+	w := httptest.NewRecorder()
+	writeJSON(w, http.StatusOK, map[string]string{"b": "a&b<c>", "a": "bad\xff"})
+
+	want := `{"a":"bad` + "\ufffd" + `","b":"a\u0026b\u003cc\u003e"}` + "\n"
+	if w.Body.String() != want {
+		t.Errorf("body = %q, want %q", w.Body.String(), want)
+	}
+}
+
+// readJSON must accept everything v1's Decoder accepted.
+func TestReadJSON_V1Compatible(t *testing.T) {
+	body := `{"Add":["a"],"add":["b"],"remove":["x` + "\xff" + `"]} trailing`
+	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+
+	var req subscriptionChangeRequest
+	if err := readJSON(r, &req); err != nil {
+		t.Fatalf("readJSON: %v", err)
+	}
+	if !slices.Equal(req.Add, []string{"b"}) || !slices.Equal(req.Remove, []string{"x\ufffd"}) {
+		t.Errorf("got %+v, want add [b] and remove [x\ufffd]", req)
 	}
 }
 

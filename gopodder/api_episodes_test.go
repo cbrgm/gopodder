@@ -1,7 +1,7 @@
 package gopodder
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -145,6 +145,24 @@ func TestHandleUploadEpisodes(t *testing.T) {
 			return ep.Episode == "http://pod.com/ep1.mp3" && ep.Position != nil && *ep.Position == 60
 		}) {
 			t.Errorf("uploaded action not stored, got %+v", stored)
+		}
+	})
+
+	t.Run("field names match case-insensitively", func(t *testing.T) {
+		body := `[{"Podcast":"http://pod.com/feed","Episode":"http://pod.com/case.mp3","Action":"play","Position":90}]`
+		r := authedRequest(http.MethodPost, "/api/2/episodes/testuser.json", body)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+		}
+		stored, err := store.GetEpisodes(t.Context(), EpisodeQuery{Username: "testuser"})
+		must(t, err)
+		if !slices.ContainsFunc(stored, func(ep Episode) bool {
+			return ep.Episode == "http://pod.com/case.mp3" && ep.Position != nil && *ep.Position == 90
+		}) {
+			t.Errorf("capitalized fields not stored, got %+v", stored)
 		}
 	})
 

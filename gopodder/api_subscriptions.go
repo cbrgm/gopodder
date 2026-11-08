@@ -2,7 +2,6 @@ package gopodder
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"slices"
@@ -87,7 +86,7 @@ func (a *API) handleUploadSubscriptions(w http.ResponseWriter, r *http.Request) 
 	username := UsernameFromContext(r.Context())
 
 	var urls []string
-	if err := json.NewDecoder(r.Body).Decode(&urls); err != nil {
+	if err := readJSON(r, &urls); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
@@ -157,7 +156,7 @@ func (a *API) handleUploadSubscriptionChanges(w http.ResponseWriter, r *http.Req
 	username := UsernameFromContext(r.Context())
 
 	var req subscriptionChangeRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := readJSON(r, &req); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}

@@ -1,7 +1,6 @@
 package gopodder
 
 import (
-	"encoding/json"
 	"net/http"
 )
 
@@ -40,7 +39,7 @@ func (a *API) handleUpdateDevice(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var update DeviceUpdate
-	if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
+	if err := readJSON(r, &update); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
