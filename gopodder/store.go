@@ -139,13 +139,13 @@ type SubscriptionChanges struct {
 type Episode struct {
 	Podcast   string  `json:"podcast"`
 	Episode   string  `json:"episode"`
-	Device    *string `json:"device,omitempty"`
-	Timestamp *string `json:"timestamp,omitempty"`
-	GUID      *string `json:"guid,omitempty"`
+	Device    *string `json:"device,omitzero"`
+	Timestamp *string `json:"timestamp,omitzero"`
+	GUID      *string `json:"guid,omitzero"`
 	Action    string  `json:"action"`
-	Started   *int64  `json:"started,omitempty"`
-	Position  *int64  `json:"position,omitempty"`
-	Total     *int64  `json:"total,omitempty"`
+	Started   *int64  `json:"started,omitzero"`
+	Position  *int64  `json:"position,omitzero"`
+	Total     *int64  `json:"total,omitzero"`
 }
 
 type EpisodeQuery struct {

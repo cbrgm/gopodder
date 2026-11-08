@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -124,7 +123,7 @@ func (a *API) registerAPIv1Routes(mux *http.ServeMux) {
 
 type apiUserResponse struct {
 	Username     string  `json:"username"`
-	LastActivity *string `json:"last_activity,omitempty"`
+	LastActivity *string `json:"last_activity,omitzero"`
 }
 
 func usersToResponse(users []User) []apiUserResponse {
@@ -157,7 +156,7 @@ func (a *API) handleAPICreateUser(w http.ResponseWriter, r *http.Request) {
 		Username string `json:"username"`
 		Password string `json:"password"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := readJSON(r, &req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -224,7 +223,7 @@ type apiDeviceResponse struct {
 	Caption       string  `json:"caption"`
 	Type          string  `json:"type"`
 	Subscriptions int64   `json:"subscriptions"`
-	LastActivity  *string `json:"last_activity,omitempty"`
+	LastActivity  *string `json:"last_activity,omitzero"`
 }
 
 func (a *API) handleAPIListDevices(w http.ResponseWriter, r *http.Request) {
@@ -268,9 +267,6 @@ func (a *API) handleAPIGetSubscriptions(w http.ResponseWriter, r *http.Request) 
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	if subs == nil {
-		subs = []string{}
-	}
 	writeJSON(w, http.StatusOK, subs)
 }
 
@@ -299,7 +295,7 @@ func (a *API) handleAPIUpdateSubscriptions(w http.ResponseWriter, r *http.Reques
 		Add    []string `json:"add"`
 		Remove []string `json:"remove"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := readJSON(r, &req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -338,8 +334,8 @@ func (a *API) handleAPIListAccounts(w http.ResponseWriter, r *http.Request) {
 		Username     string  `json:"username"`
 		Role         string  `json:"role"`
 		CreatedAt    string  `json:"created_at"`
-		LastLogin    *string `json:"last_login,omitempty"`
-		LastActivity *string `json:"last_activity,omitempty"`
+		LastLogin    *string `json:"last_login,omitzero"`
+		LastActivity *string `json:"last_activity,omitzero"`
 	}
 	result := make([]acctResp, 0, len(accounts))
 	for _, acct := range accounts {
@@ -366,7 +362,7 @@ func (a *API) handleAPICreateAccount(w http.ResponseWriter, r *http.Request) {
 		Password string `json:"password"`
 		Role     string `json:"role"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := readJSON(r, &req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}

@@ -2,7 +2,6 @@ package gopodder
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"slices"
@@ -40,10 +39,6 @@ func (a *API) handleGetAllSubscriptions(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if subs == nil {
-		subs = []string{}
-	}
-
 	if strings.HasSuffix(r.URL.Path, ".opml") {
 		writeOPML(w, fmt.Sprintf("%s subscriptions", username), subs)
 		return
@@ -69,10 +64,6 @@ func (a *API) handleGetSubscriptions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if subs == nil {
-		subs = []string{}
-	}
-
 	a.logger.Debug("device pulled subscriptions", "username", username, "device", deviceID, "count", len(subs))
 	_ = a.store.UpdateDeviceLastActivity(r.Context(), username, deviceID, time.Now())
 	writeJSON(w, http.StatusOK, subs)
@@ -87,7 +78,7 @@ func (a *API) handleUploadSubscriptions(w http.ResponseWriter, r *http.Request) 
 	username := UsernameFromContext(r.Context())
 
 	var urls []string
-	if err := json.NewDecoder(r.Body).Decode(&urls); err != nil {
+	if err := readJSON(r, &urls); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
@@ -131,13 +122,6 @@ func (a *API) handleGetSubscriptionChanges(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if changes.Add == nil {
-		changes.Add = []string{}
-	}
-	if changes.Remove == nil {
-		changes.Remove = []string{}
-	}
-
 	a.logger.Debug("device pulled subscription changes", "username", username, "device", deviceID, "since", since, "add", len(changes.Add), "remove", len(changes.Remove))
 	a.metrics.IncSyncOperation("pull")
 	_ = a.store.UpdateDeviceLastActivity(r.Context(), username, deviceID, time.Now())
@@ -157,7 +141,7 @@ func (a *API) handleUploadSubscriptionChanges(w http.ResponseWriter, r *http.Req
 	username := UsernameFromContext(r.Context())
 
 	var req subscriptionChangeRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := readJSON(r, &req); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}

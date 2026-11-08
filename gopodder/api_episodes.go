@@ -1,7 +1,6 @@
 package gopodder
 
 import (
-	"encoding/json"
 	"net/http"
 	"time"
 )
@@ -43,10 +42,6 @@ func (a *API) handleGetEpisodes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if episodes == nil {
-		episodes = []Episode{}
-	}
-
 	a.logger.Debug("device pulled episode actions", "username", username, "count", len(episodes))
 	writeJSON(w, http.StatusOK, episodeResponse{
 		Actions:   episodes,
@@ -62,7 +57,7 @@ func (a *API) handleUploadEpisodes(w http.ResponseWriter, r *http.Request) {
 	username := UsernameFromContext(r.Context())
 
 	var episodes []Episode
-	if err := json.NewDecoder(r.Body).Decode(&episodes); err != nil {
+	if err := readJSON(r, &episodes); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}

@@ -2,7 +2,8 @@ package gopodder
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -188,10 +189,26 @@ func requestBaseURL(r *http.Request) string {
 	return "http://" + r.Host
 }
 
+// jsonOpts keeps the v1 wire behavior: sorted keys, HTML-escaped output,
+// case-insensitive names, last duplicate wins, invalid UTF-8 replaced instead of rejected.
+var jsonOpts = json.JoinOptions(
+	json.Deterministic(true),
+	json.MatchCaseInsensitiveNames(true),
+	jsontext.AllowDuplicateNames(true),
+	jsontext.AllowInvalidUTF8(true),
+	jsontext.EscapeForHTML(true),
+	jsontext.EscapeForJS(true),
+)
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	_ = json.MarshalEncode(jsontext.NewEncoder(w, jsonOpts), v)
+}
+
+// readJSON decodes only the first value like v1's Decoder, trailing data is ignored.
+func readJSON(r *http.Request, v any) error {
+	return json.UnmarshalDecode(jsontext.NewDecoder(r.Body, jsonOpts), v)
 }
 
 func writeJSONError(w http.ResponseWriter, status int, msg string) {
