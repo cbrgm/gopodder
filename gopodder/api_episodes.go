@@ -42,10 +42,6 @@ func (a *API) handleGetEpisodes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if episodes == nil {
-		episodes = []Episode{}
-	}
-
 	a.logger.Debug("device pulled episode actions", "username", username, "count", len(episodes))
 	writeJSON(w, http.StatusOK, episodeResponse{
 		Actions:   episodes,

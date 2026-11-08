@@ -18,10 +18,6 @@ func (a *API) handleListDevices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if devices == nil {
-		devices = []Device{}
-	}
-
 	subs, _ := a.store.GetSubscriptions(r.Context(), username)
 	subCount := int64(len(subs))
 	for i := range devices {

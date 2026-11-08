@@ -267,9 +267,6 @@ func (a *API) handleAPIGetSubscriptions(w http.ResponseWriter, r *http.Request) 
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	if subs == nil {
-		subs = []string{}
-	}
 	writeJSON(w, http.StatusOK, subs)
 }
 

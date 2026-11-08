@@ -39,10 +39,6 @@ func (a *API) handleGetAllSubscriptions(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if subs == nil {
-		subs = []string{}
-	}
-
 	if strings.HasSuffix(r.URL.Path, ".opml") {
 		writeOPML(w, fmt.Sprintf("%s subscriptions", username), subs)
 		return
@@ -66,10 +62,6 @@ func (a *API) handleGetSubscriptions(w http.ResponseWriter, r *http.Request) {
 		a.logger.Error("failed to get subscriptions", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
-	}
-
-	if subs == nil {
-		subs = []string{}
 	}
 
 	a.logger.Debug("device pulled subscriptions", "username", username, "device", deviceID, "count", len(subs))
@@ -128,13 +120,6 @@ func (a *API) handleGetSubscriptionChanges(w http.ResponseWriter, r *http.Reques
 		a.logger.Error("failed to get subscription changes", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
-	}
-
-	if changes.Add == nil {
-		changes.Add = []string{}
-	}
-	if changes.Remove == nil {
-		changes.Remove = []string{}
 	}
 
 	a.logger.Debug("device pulled subscription changes", "username", username, "device", deviceID, "since", since, "add", len(changes.Add), "remove", len(changes.Remove))
