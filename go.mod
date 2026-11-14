@@ -6,7 +6,7 @@ require (
 	github.com/a-h/templ v0.3.1100
 	github.com/alecthomas/kong v1.17.0
 	github.com/dustin/go-humanize v1.1.0
-	github.com/jackc/pgx/v5 v5.12.0
+	github.com/jackc/pgx/v5 v5.13.0
 	github.com/prometheus/client_golang v1.25.0
 	golang.org/x/crypto v0.59.0
 	modernc.org/sqlite v1.62.0
