@@ -2,6 +2,8 @@ package gopodder
 
 import (
 	"database/sql"
+	"fmt"
+	"slices"
 	"testing"
 	"time"
 )
@@ -1067,6 +1069,60 @@ func TestSQLiteStore_Episodes(t *testing.T) {
 				t.Errorf("got action=%q position=%v, want play/300", ep.Action, ep.Position)
 			}
 		})
+	})
+
+	t.Run("older action does not overwrite newer one", func(t *testing.T) {
+		const feed = "http://podcast1.com/feed"
+		const newer, older = "2024-08-01T12:05:00", "2024-08-01T11:00:00"
+
+		action := func(url, action string, ts *string, pos int64) Episode {
+			return Episode{Podcast: feed, Episode: url, Timestamp: ts, Action: action, Position: &pos}
+		}
+
+		tests := []struct {
+			name    string
+			uploads func(url string) [][]Episode
+			action  string
+			pos     int64
+		}{
+			{"late older play is dropped", func(u string) [][]Episode {
+				return [][]Episode{{action(u, "play", new(newer), 600)}, {action(u, "play", new(older), 50)}}
+			}, "play", 600},
+			{"older play later in the same upload is dropped", func(u string) [][]Episode {
+				return [][]Episode{{action(u, "play", new(newer), 600), action(u, "play", new(older), 50)}}
+			}, "play", 600},
+			{"newer play replaces older one", func(u string) [][]Episode {
+				return [][]Episode{{action(u, "play", new(older), 50)}, {action(u, "play", new(newer), 600)}}
+			}, "play", 600},
+			{"older play still replaces a newer delete", func(u string) [][]Episode {
+				return [][]Episode{{action(u, "delete", new(newer), 0)}, {action(u, "play", new(older), 50)}}
+			}, "play", 50},
+			{"action without timestamp is last write wins", func(u string) [][]Episode {
+				return [][]Episode{{action(u, "play", new(newer), 600)}, {action(u, "play", nil, 50)}}
+			}, "play", 50},
+		}
+
+		for i, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				url := fmt.Sprintf("http://podcast1.com/ep-order-%d.mp3", i)
+				for j, batch := range tt.uploads(url) {
+					if err := store.UpdateEpisodes(ctx, "alice", batch, int64(2000+10*i+j)); err != nil {
+						t.Fatalf("UpdateEpisodes: %v", err)
+					}
+				}
+				eps, err := store.GetEpisodes(ctx, EpisodeQuery{Username: "alice", Since: 0})
+				if err != nil {
+					t.Fatalf("GetEpisodes: %v", err)
+				}
+				idx := slices.IndexFunc(eps, func(ep Episode) bool { return ep.Episode == url })
+				if idx < 0 {
+					t.Fatalf("episode %q not found", url)
+				}
+				if ep := eps[idx]; ep.Action != tt.action || ep.Position == nil || *ep.Position != tt.pos {
+					t.Errorf("got action=%q position=%v, want %s/%d", ep.Action, ep.Position, tt.action, tt.pos)
+				}
+			})
+		}
 	})
 }
 
