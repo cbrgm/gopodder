@@ -1325,6 +1325,9 @@ ON CONFLICT(username, podcast, episode) DO UPDATE SET
     content_hash = EXCLUDED.content_hash
 WHERE EXCLUDED.content_hash != episodes.content_hash
   AND NOT (EXCLUDED.action IN ('download', 'delete') AND episodes.action IN ('play', 'new'))
+  AND (EXCLUDED.timestamp IS NULL OR episodes.timestamp IS NULL
+       OR EXCLUDED.timestamp >= episodes.timestamp
+       OR (episodes.action IN ('download', 'delete') AND EXCLUDED.action IN ('play', 'new')))
 `
 
 type UpsertEpisodeParams struct {
